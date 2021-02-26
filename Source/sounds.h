@@ -181,7 +181,8 @@ typedef enum {
   mus_read_m,
   mus_dm2ttl,
   mus_dm2int,
-  NUMMUSIC
+  NUMMUSIC,
+  mus_musinfo
 } musicenum_t;
 
 //
@@ -305,6 +306,9 @@ typedef enum {
   sfx_dgact,
   sfx_dgdth,
   sfx_dgpain,
+
+  // [crispy] play DSSECRET if available
+  sfx_secret,
 
   NUMSFX
 } sfxenum_t;

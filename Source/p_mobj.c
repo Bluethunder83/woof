@@ -37,6 +37,7 @@
 #include "st_stuff.h"
 #include "hu_stuff.h"
 #include "s_sound.h"
+#include "s_musinfo.h" // [crispy] S_ParseMusInfo()
 #include "info.h"
 #include "g_game.h"
 #include "p_inter.h"
@@ -133,6 +134,8 @@ void P_XYMovement (mobj_t* mo)
   player_t *player;
   fixed_t xmove, ymove;
 
+  fixed_t oldx,oldy; // phares 9/10/98: reducing bobbing/momentum on ice
+
   if (!(mo->momx | mo->momy)) // Any momentum?
     {
       if (mo->flags & MF_SKULLFLY)
@@ -163,6 +166,10 @@ void P_XYMovement (mobj_t* mo)
 
   xmove = mo->momx;
   ymove = mo->momy;
+
+  oldx = mo->x; // phares 9/10/98: new code to reduce bobbing/momentum
+  oldy = mo->y; // when on ice & up against wall. These will be compared
+                // to your x,y values later to see if you were able to move
 
   do
     {
@@ -325,6 +332,26 @@ void P_XYMovement (mobj_t* mo)
       // Reducing player momentum is no longer needed to reduce
       // bobbing, so ice works much better now.
 
+      if (demo_version < 203)
+      {
+        // phares 9/10/98: reduce bobbing/momentum when on ice & up against wall
+
+        if ((oldx == mo->x) && (oldy == mo->y)) // Did you go anywhere?
+          { // No. Use original friction. This allows you to not bob so much
+            // if you're on ice, but keeps enough momentum around to break free
+            // when you're mildly stuck in a wall.
+          mo->momx = FixedMul(mo->momx,ORIG_FRICTION);
+          mo->momy = FixedMul(mo->momy,ORIG_FRICTION);
+          }
+        else
+          { // Yes. Use stored friction.
+          mo->momx = FixedMul(mo->momx,mo->friction);
+          mo->momy = FixedMul(mo->momy,mo->friction);
+          }
+        mo->friction = ORIG_FRICTION; // reset to normal for next tic
+      }
+      else
+      {
       fixed_t friction = P_GetFriction(mo, NULL);
 
       mo->momx = FixedMul(mo->momx, friction);
@@ -339,6 +366,7 @@ void P_XYMovement (mobj_t* mo)
 	  player->momx = FixedMul(player->momx, ORIG_FRICTION);
 	  player->momy = FixedMul(player->momy, ORIG_FRICTION);
 	}
+     }
     }
 }
 
@@ -604,12 +632,29 @@ void P_NightmareRespawn(mobj_t* mobj)
   P_RemoveMobj (mobj);
 }
 
+// [crispy] support MUSINFO lump (dynamic music changing)
+static inline void MusInfoThinker (mobj_t *thing)
+{
+  if (musinfo.mapthing != thing &&
+      thing->subsector->sector == players[displayplayer].mo->subsector->sector)
+  {
+      musinfo.lastmapthing = musinfo.mapthing;
+      musinfo.mapthing = thing;
+      musinfo.tics = leveltime ? 30 : 0;
+  }
+}
+
 //
 // P_MobjThinker
 //
 
 void P_MobjThinker (mobj_t* mobj)
 {
+  // [crispy] support MUSINFO lump (dynamic music changing)
+  if (mobj->type == MT_MUSICSOURCE)
+  {
+      return MusInfoThinker(mobj);
+  }
   // [FG] suppress interpolation of player missiles for the first tic
   if (mobj->interp == -1)
   {
@@ -750,6 +795,9 @@ mobj_t *P_SpawnMobj(fixed_t x, fixed_t y, fixed_t z, mobjtype_t type)
 
   mobj->thinker.function = P_MobjThinker;
   mobj->above_thing = mobj->below_thing = 0;           // phares
+
+  // for Boom friction code
+  mobj->friction    = ORIG_FRICTION;                        // phares 3/17/98
 
   P_AddThinker(&mobj->thinker);
 
@@ -971,6 +1019,7 @@ void P_SpawnMapThing (mapthing_t* mthing)
   int    i;
   mobj_t *mobj;
   fixed_t x, y, z;
+  int    musid = 0;
 
   switch(mthing->type)
     {
@@ -1061,6 +1110,13 @@ void P_SpawnMapThing (mapthing_t* mthing)
       !(mthing->options & MTF_HARD) : !(mthing->options & MTF_NORMAL))
     return;
 
+  // [crispy] support MUSINFO lump (dynamic music changing)
+  if (mthing->type >= 14100 && mthing->type <= 14164)
+  {
+      musid = mthing->type - 14100;
+      mthing->type = mobjinfo[MT_MUSICSOURCE].doomednum;
+  }
+
   // find which type to spawn
 
   // killough 8/23/98: use table for faster lookup
@@ -1119,6 +1175,12 @@ spawnit:
   mobj->angle = ANG45 * (mthing->angle/45);
   if (mthing->options & MTF_AMBUSH)
     mobj->flags |= MF_AMBUSH;
+
+  // [crispy] support MUSINFO lump (dynamic music changing)
+  if (i == MT_MUSICSOURCE)
+  {
+      mobj->health = 1000 + musid;
+  }
 }
 
 //

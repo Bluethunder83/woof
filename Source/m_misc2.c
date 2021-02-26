@@ -171,6 +171,14 @@ char *M_FileCaseExists(const char *path)
     return NULL;
 }
 
+boolean M_StrToInt(const char *str, int *result)
+{
+    return sscanf(str, " 0x%x", (unsigned int *) result) == 1
+        || sscanf(str, " 0X%x", (unsigned int *) result) == 1
+        || sscanf(str, " 0%o", (unsigned int *) result) == 1
+        || sscanf(str, " %d", result) == 1;
+}
+
 // Returns the directory portion of the given path, without the trailing
 // slash separator character. If no directory is described in the path,
 // the string "." is returned. In either case, the result is newly allocated
@@ -411,8 +419,15 @@ char *M_StringJoin(const char *s, ...)
     return result;
 }
 
+// On Windows, vsnprintf() is _vsnprintf().
+#ifdef _WIN32
+#if _MSC_VER < 1400 /* not needed for Visual Studio 2008 */
+#define vsnprintf _vsnprintf
+#endif
+#endif
+
 // Safe, portable vsnprintf().
-int M_vsnprintf(char *buf, size_t buf_len, const char *s, va_list args)
+static int PRINTF_ATTR(3, 0) M_vsnprintf(char *buf, size_t buf_len, const char *s, va_list args)
 {
     int result;
 

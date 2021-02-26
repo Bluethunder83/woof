@@ -688,7 +688,7 @@ void F_BunnyScroll (void)
   if (scrolled < 0)
       scrolled = 0;
 
-  pillar_width = (SCREENWIDTH - p1->width) / 2;
+  pillar_width = (SCREENWIDTH - SHORT(p1->width)) / 2;
 
   if (pillar_width > 0)
   {
@@ -701,9 +701,9 @@ void F_BunnyScroll (void)
   }
 
   // Calculate the portion of PFUB2 that would be offscreen at original res.
-  p1offset = (ORIGWIDTH - p1->width) / 2;
+  p1offset = (ORIGWIDTH - SHORT(p1->width)) / 2;
 
-  if (p2->width == ORIGWIDTH)
+  if (SHORT(p2->width) == ORIGWIDTH)
   {
     // Unity or original PFUBs.
     // PFUB1 only contains the pixels that scroll off.
@@ -723,7 +723,7 @@ void F_BunnyScroll (void)
     if (x2 < p2offset)
       F_DrawPatchCol (x, p1, x2 - p1offset);
     else
-      F_DrawPatchCol (x, p2, x2 - p2offset);           
+      F_DrawPatchCol (x, p2, x2 - p2offset);
   }
       
   if (finalecount < 1130)
@@ -731,7 +731,7 @@ void F_BunnyScroll (void)
   if (finalecount < 1180)
   {
     V_DrawPatch ((ORIGWIDTH-13*8)/2,
-                 (ORIGHEIGHT-8*8)/2,0, 
+                 (ORIGHEIGHT-8*8)/2,0,
                  W_CacheLumpName ("END0",PU_CACHE));
     laststage = 0;
     return;
@@ -747,8 +747,8 @@ void F_BunnyScroll (void)
   }
       
   sprintf (name,"END%i",stage);
-  V_DrawPatch ((ORIGWIDTH-13*8)/2, 
-               (ORIGHEIGHT-8*8)/2,0, 
+  V_DrawPatch ((ORIGWIDTH-13*8)/2,
+               (ORIGHEIGHT-8*8)/2,0,
                W_CacheLumpName (name,PU_CACHE));
 }
 

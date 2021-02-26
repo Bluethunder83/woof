@@ -374,9 +374,9 @@ void ST_refreshBackground(boolean force)
       }
 
       // [crispy] center unity rerelease wide status bar
-      if (sbar->width > ORIGWIDTH && sbar->leftoffset == 0)
+      if (SHORT(sbar->width) > ORIGWIDTH && SHORT(sbar->leftoffset) == 0)
       {
-        V_DrawPatch(ST_X + (ORIGWIDTH - sbar->width) / 2, 0, BG, sbar);
+        V_DrawPatch(ST_X + (ORIGWIDTH - SHORT(sbar->width)) / 2, 0, BG, sbar);
       }
       else
       {
@@ -386,11 +386,11 @@ void ST_refreshBackground(boolean force)
       // killough 3/7/98: make face background change with displayplayer
       if (netgame)
         V_DrawPatch(ST_FX, 0, BG, faceback[displayplayer]);
-      
+
       // [crispy] copy entire SCREENWIDTH, to preserve the pattern
       // to the left and right of the status bar in widescren mode
       if (!force)
-      {      
+      {
         V_CopyRect(ST_X, 0, BG, SCREENWIDTH, ST_HEIGHT, ST_X, ST_Y, FG);
       }
       else

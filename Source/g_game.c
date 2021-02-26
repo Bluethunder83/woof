@@ -50,6 +50,7 @@
 #include "r_draw.h"
 #include "p_map.h"
 #include "s_sound.h"
+#include "s_musinfo.h"
 #include "dstrings.h"
 #include "sounds.h"
 #include "r_data.h"
@@ -693,6 +694,28 @@ static void G_DoLoadLevel(void)
     extern msecnode_t *headsecnode; // phares 3/25/98
     headsecnode = NULL;
    }
+
+  // [crispy] pistol start
+  if (pistolstart)
+  {
+    if (!demorecording && !demoplayback && !netgame)
+    {
+      G_PlayerReborn(0);
+    }
+    else if ((demoplayback || netdemo) && !singledemo)
+    {
+      // no-op - silently ignore pistolstart when playing demo from the
+      // demo reel
+    }
+    else
+    {
+      const char message[] = "The -pistolstart option is not supported"
+                             " for demos and\n"
+                             " network play.";
+      if (!demo_p) demorecording = false;
+      I_Error(message);
+    }
+  }
 
   P_SetupLevel (gameepisode, gamemap, 0, gameskill);
   displayplayer = consoleplayer;    // view the guy you are playing
@@ -1496,6 +1519,11 @@ static void G_DoSaveGame(void)
   memcpy(save_p, &totalleveltimes, sizeof totalleveltimes);
   save_p += sizeof totalleveltimes;
 
+  // save lump name for current MUSINFO item
+  CheckSaveGame(8);
+  memcpy(save_p, lumpinfo[musinfo.current_item].name, 8);
+  save_p += 8;
+
   length = save_p - savebuffer;
 
   Z_CheckHeap();
@@ -1610,6 +1638,25 @@ static void G_DoLoadGame(void)
   {
     memcpy(&totalleveltimes, save_p, sizeof totalleveltimes);
     save_p += sizeof totalleveltimes;
+  }
+
+  // restore MUSINFO music
+  if (save_p - savebuffer <= length - 8)
+  {
+    char lump[9] = {0};
+    int i;
+
+    memcpy(lump, save_p, 8);
+
+    if ((i = W_CheckNumForName(lump)) > 0)
+    {
+      memset(&musinfo, 0, sizeof(musinfo));
+      musinfo.current_item = i;
+      musinfo.from_savegame = true;
+      S_ChangeMusInfoMusic(i, true);
+    }
+
+    save_p += 8;
   }
 
   // done
@@ -1866,7 +1913,6 @@ static boolean G_CheckSpot(int playernum, mapthing_t *mthing)
 {
   fixed_t     x,y;
   subsector_t *ss;
-  unsigned    an;
   mobj_t      *mo;
   int         i;
 
@@ -1921,10 +1967,71 @@ static boolean G_CheckSpot(int playernum, mapthing_t *mthing)
 
   // spawn a teleport fog
   ss = R_PointInSubsector (x,y);
-  an = ( ANG45 * (mthing->angle/45) ) >> ANGLETOFINESHIFT;
 
-  mo = P_SpawnMobj(x+20*finecosine[an], y+20*finesine[an],
-                   ss->sector->floorheight, MT_TFOG);
+  // The code in the released source looks like this:
+  //
+  //    an = ( ANG45 * (((unsigned int) mthing->angle)/45) )
+  //         >> ANGLETOFINESHIFT;
+  //    mo = P_SpawnMobj (x+20*finecosine[an], y+20*finesine[an]
+  //                     , ss->sector->floorheight
+  //                     , MT_TFOG);
+  //
+  // But 'an' can be a signed value in the DOS version. This means that
+  // we get a negative index and the lookups into finecosine/finesine
+  // end up dereferencing values in finetangent[].
+  // A player spawning on a deathmatch start facing directly west spawns
+  // "silently" with no spawn fog. Emulate this.
+  //
+  // This code is imported from PrBoom+.
+
+  {
+    fixed_t xa, ya;
+    signed int an;
+
+    // This calculation overflows in Vanilla Doom, but here we deliberately
+    // avoid integer overflow as it is undefined behavior, so the value of
+    // 'an' will always be positive.
+    an = (ANG45 >> ANGLETOFINESHIFT) * ((signed int) mthing->angle / 45);
+
+    if (demo_compatibility)
+      switch (an)
+      {
+        case 4096:  // -4096:
+            xa = finetangent[2048];    // finecosine[-4096]
+            ya = finetangent[0];       // finesine[-4096]
+            break;
+        case 5120:  // -3072:
+            xa = finetangent[3072];    // finecosine[-3072]
+            ya = finetangent[1024];    // finesine[-3072]
+            break;
+        case 6144:  // -2048:
+            xa = finesine[0];          // finecosine[-2048]
+            ya = finetangent[2048];    // finesine[-2048]
+            break;
+        case 7168:  // -1024:
+            xa = finesine[1024];       // finecosine[-1024]
+            ya = finetangent[3072];    // finesine[-1024]
+            break;
+        case 0:
+        case 1024:
+        case 2048:
+        case 3072:
+            xa = finecosine[an];
+            ya = finesine[an];
+            break;
+        default:
+            I_Error("G_CheckSpot: unexpected angle %d\n", an);
+            xa = ya = 0;
+            break;
+      }
+    else
+    {
+      xa = finecosine[an];
+      ya = finesine[an];
+    }
+    mo = P_SpawnMobj(x + 20 * xa, y + 20 * ya,
+                     ss->sector->floorheight, MT_TFOG);
+  }
 
   if (players[consoleplayer].viewz != 1)
     S_StartSound(mo, sfx_telept);  // don't start sound on first frame

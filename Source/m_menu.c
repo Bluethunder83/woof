@@ -1786,16 +1786,16 @@ void M_DrawBackground(char* patchname, byte *back_dest)
 #else              // while this pixel-doubles it
 /*
       for (y = 0 ; y < SCREENHEIGHT ; src = ((++y & 63)<<6) + back_src,
-       back_dest += SCREENWIDTH*2)
-  for (x = 0 ; x < SCREENWIDTH/64 ; x++)
-    {
-      int i = 63;
-      do
-        back_dest[i*2] = back_dest[i*2+SCREENWIDTH*2] =
-    back_dest[i*2+1] = back_dest[i*2+SCREENWIDTH*2+1] = src[i];
-      while (--i>=0);
-      back_dest += 128;
-    }
+	     back_dest += SCREENWIDTH*2)
+	for (x = 0 ; x < SCREENWIDTH/64 ; x++)
+	  {
+	    int i = 63;
+	    do
+	      back_dest[i*2] = back_dest[i*2+SCREENWIDTH*2] =
+		back_dest[i*2+1] = back_dest[i*2+SCREENWIDTH*2+1] = src[i];
+	    while (--i>=0);
+	    back_dest += 128;
+	  }
 */
     for (int y = 0; y < SCREENHEIGHT<<1; y++)
       for (int x = 0; x < SCREENWIDTH<<1; x += 2)
@@ -1810,10 +1810,10 @@ void M_DrawBackground(char* patchname, byte *back_dest)
 /*
     for (y = 0 ; y < SCREENHEIGHT ; src = ((++y & 63)<<6) + back_src)
       for (x = 0 ; x < SCREENWIDTH/64 ; x++)
-  {
-    memcpy (back_dest,back_src+((y & 63)<<6),64);
-    back_dest += 64;
-  }
+	{
+	  memcpy (back_dest,back_src+((y & 63)<<6),64);
+	  back_dest += 64;
+	}
 */
     for (y = 0; y < SCREENHEIGHT; y++)
       for (x = 0; x < SCREENWIDTH; x++)
@@ -2132,7 +2132,7 @@ void M_DrawSetting(setup_menu_t* s)
 
 	  for (i = 0 ; i < char_width ; i++)
 	    colorblock[i] = PAL_BLACK;
-	  V_DrawBlock(x+cursor_start-1,y+7,0,char_width,1,colorblock);
+	  V_DrawBlock(x+cursor_start-1+WIDESCREENDELTA,y+7,0,char_width,1,colorblock);
 	}
 
       // Draw the setting for the item
@@ -2215,7 +2215,7 @@ void M_DrawScreenItems(setup_menu_t* src)
 // Data used to draw the "are you sure?" dialogue box when resetting
 // to defaults.
 
-#define VERIFYBOXXORG 66
+#define VERIFYBOXXORG (66+WIDESCREENDELTA)
 #define VERIFYBOXYORG 88
 #define PAL_GRAY1  91
 #define PAL_GRAY2  98
@@ -2257,7 +2257,7 @@ void M_DrawDefVerify()
   if (whichSkull) // blink the text
     {
       strcpy(menu_buffer,"Reset to defaults? (Y or N)");
-      M_DrawMenuString(VERIFYBOXXORG+8,VERIFYBOXYORG+8,CR_RED);
+      M_DrawMenuString(VERIFYBOXXORG+8-WIDESCREENDELTA,VERIFYBOXYORG+8,CR_RED);
     }
 }
 
@@ -2809,6 +2809,7 @@ setup_menu_t stat_settings1[] =  // Status Bar and HUD Settings screen
   {"ARMOR GOOD/EXTRA"  ,S_NUM       ,m_null,ST_X,ST_Y+13*8, {"armor_green"}},
   {"AMMO LOW/OK"       ,S_NUM       ,m_null,ST_X,ST_Y+14*8, {"ammo_red"}},
   {"AMMO OK/GOOD"      ,S_NUM       ,m_null,ST_X,ST_Y+15*8, {"ammo_yellow"}},
+  {"\"A SECRET IS REVEALED!\" MESSAGE",S_YESNO,m_null,ST_X,ST_Y+16*8, {"hud_secret_message"}},
 
   // Button for resetting to defaults
   {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},

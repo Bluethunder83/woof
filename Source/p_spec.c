@@ -52,6 +52,7 @@
 #include "m_bbox.h"                                         // phares 3/20/98
 #include "d_deh.h"
 #include "r_plane.h"  // killough 10/98
+#include "i_sound.h"
 
 //
 // Animating textures and planes
@@ -494,6 +495,7 @@ fixed_t P_FindShortestTextureAround(int secnum)
 {
   const sector_t *sec = &sectors[secnum];
   int i, minsize = D_MAXINT;
+  int mintex = (demo_version < 203) ? 1 : 0; //jff 8/14/98 texture 0 is a placeholder
 
   if (!comp[comp_model])
     minsize = 32000<<FRACBITS; //jff 3/13/98 prevent overflow in height calcs
@@ -502,10 +504,10 @@ fixed_t P_FindShortestTextureAround(int secnum)
     if (twoSided(secnum, i))
       {
         const side_t *side;
-        if ((side = getSide(secnum,i,0))->bottomtexture >= 0 &&
+        if ((side = getSide(secnum,i,0))->bottomtexture >= mintex &&
             textureheight[side->bottomtexture] < minsize)
           minsize = textureheight[side->bottomtexture];
-        if ((side = getSide(secnum,i,1))->bottomtexture >= 0 &&
+        if ((side = getSide(secnum,i,1))->bottomtexture >= mintex &&
             textureheight[side->bottomtexture] < minsize)
           minsize = textureheight[side->bottomtexture];
       }
@@ -530,6 +532,7 @@ fixed_t P_FindShortestUpperAround(int secnum)
 {
   const sector_t *sec = &sectors[secnum];
   int i, minsize = D_MAXINT;
+  int mintex = (demo_version < 203) ? 1 : 0; //jff 8/14/98 texture 0 is a placeholder
 
   if (!comp[comp_model])
     minsize = 32000<<FRACBITS; //jff 3/13/98 prevent overflow
@@ -539,10 +542,10 @@ fixed_t P_FindShortestUpperAround(int secnum)
     if (twoSided(secnum, i))
       {
         const side_t *side;
-        if ((side = getSide(secnum,i,0))->toptexture >= 0)
+        if ((side = getSide(secnum,i,0))->toptexture >= mintex)
           if (textureheight[side->toptexture] < minsize)
             minsize = textureheight[side->toptexture];
-        if ((side = getSide(secnum,i,1))->toptexture >= 0)
+        if ((side = getSide(secnum,i,1))->toptexture >= mintex)
           if (textureheight[side->toptexture] < minsize)
             minsize = textureheight[side->toptexture];
       }
@@ -2049,6 +2052,8 @@ int disable_nuke;  // killough 12/98: nukage disabling cheat
 void P_PlayerInSpecialSector (player_t *player)
 {
   sector_t *sector = player->mo->subsector->sector;
+  extern int showMessages;
+  extern int hud_secret_message;
 
   // Falling, not all the way down yet?
   // Sector specials don't apply in mid-air
@@ -2064,6 +2069,18 @@ void P_PlayerInSpecialSector (player_t *player)
           // Tally player in secret sector, clear secret special
           player->secretcount++;
           sector->special = 0;
+
+          if (showMessages && hud_secret_message && player == &players[consoleplayer])
+          {
+            int sfx_id;
+            player->message = s_HUSTR_SECRETFOUND;
+
+            sfx_id = I_GetSfxLumpNum(&S_sfx[sfx_secret]) != -1 ? sfx_secret :
+               I_GetSfxLumpNum(&S_sfx[sfx_itmbk]) != -1 ? sfx_itmbk : -1;
+
+            if (sfx_id != -1)
+                S_StartSound(NULL, sfx_id);
+          }
 	}
       else
 	if (!disable_nuke)  // killough 12/98: nukage disabling cheat
@@ -2674,6 +2691,79 @@ static void P_SpawnScrollers(void)
     }
 }
 
+// Restored Boom's friction code
+
+/////////////////////////////
+//
+// Add a friction thinker to the thinker list
+//
+// Add_Friction adds a new friction thinker to the list of active thinkers.
+//
+
+static void Add_Friction(int friction, int movefactor, int affectee)
+{
+    friction_t *f = Z_Malloc(sizeof *f, PU_LEVSPEC, 0);
+
+    f->thinker.function/*.acp1*/ = /*(actionf_p1) */T_Friction;
+    f->friction = friction;
+    f->movefactor = movefactor;
+    f->affectee = affectee;
+    P_AddThinker(&f->thinker);
+}
+
+/////////////////////////////
+//
+// This is where abnormal friction is applied to objects in the sectors.
+// A friction thinker has been spawned for each sector where less or
+// more friction should be applied. The amount applied is proportional to
+// the length of the controlling linedef.
+
+void T_Friction(friction_t *f)
+{
+    sector_t *sec;
+    mobj_t   *thing;
+    msecnode_t* node;
+
+    if (compatibility || !variable_friction)
+        return;
+
+    sec = sectors + f->affectee;
+
+    // Be sure the special sector type is still turned on. If so, proceed.
+    // Else, bail out; the sector type has been changed on us.
+
+    if (!(sec->special & FRICTION_MASK))
+        return;
+
+    // Assign the friction value to players on the floor, non-floating,
+    // and clipped. Normally the object's friction value is kept at
+    // ORIG_FRICTION and this thinker changes it for icy or muddy floors.
+
+    // In Phase II, you can apply friction to Things other than players.
+
+    // When the object is straddling sectors with the same
+    // floorheight that have different frictions, use the lowest
+    // friction value (muddy has precedence over icy).
+
+    node = sec->touching_thinglist; // things touching this sector
+    while (node)
+    {
+        thing = node->m_thing;
+        if (thing->player &&
+            !(thing->flags & (MF_NOGRAVITY | MF_NOCLIP)) &&
+            thing->z <= sec->floorheight)
+            {
+                if ((thing->friction == ORIG_FRICTION) ||     // normal friction?
+                    (f->friction < thing->friction))
+                    {
+                      thing->friction   = f->friction;
+                      thing->movefactor = f->movefactor;
+                    }
+            }
+        node = node->m_snext;
+    }
+}
+
 // killough 3/7/98 -- end generalized scroll effects
 
 ////////////////////////////////////////////////////////////////////////////
@@ -2774,6 +2864,10 @@ static void P_SpawnFriction(void)
             // on every tic, adjusting its friction, putting unnecessary
             // drag on CPU. New code adjusts friction of sector only once
             // at level startup, and then uses this friction value.
+
+            // Boom's friction code for demo compatibility
+            if (!demo_compatibility && demo_version < 203)
+              Add_Friction(friction,movefactor,s);
 
             sectors[s].friction = friction;
             sectors[s].movefactor = movefactor;

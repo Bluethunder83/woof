@@ -409,17 +409,18 @@ static boolean P_Move(mobj_t *actor, boolean dropoff) // killough 9/12/98
         if (P_UseSpecialLine(actor, spechit[numspechit], 0))
 	  good |= spechit[numspechit] == blockline ? 1 : 2;
 
-      // [FG] cph - compatibility maze here
+      // [FG] compatibility maze here
       // Boom v2.01 and orig. Doom return "good"
       // Boom v2.02 and LxDoom return good && (P_Random(pr_trywalk)&3)
       // MBF plays even more games
 
-      if (!good || comp[comp_doorstuck])
+      if (demo_version < 202)
         return good;
       if (demo_version < 203)
-        return (P_Random(pr_trywalk)&3); /* jff 8/13/98 */
-      else /* finally, MBF code */
-        return ((P_Random(pr_opendoor) >= 230) ^ (good & 1));
+        return good && (compatibility || (P_Random(pr_trywalk)&3)); //jff 8/13/98
+      else
+      return good && (demo_version < 203 || comp[comp_doorstuck] ||
+		      (P_Random(pr_opendoor) >= 230) ^ (good & 1));
     }
   else
     actor->flags &= ~MF_INFLOAT;
@@ -1544,7 +1545,9 @@ boolean PIT_VileCheck(mobj_t *thing)
   maxdist = thing->info->radius + mobjinfo[MT_VILE].radius;
 
   if (abs(thing->x-viletryx) > maxdist || abs(thing->y-viletryy) > maxdist)
+  {
     return true;                // not actually touching
+  }
 
 // Check to see if the radius and height are zero. If they are      // phares
 // then this is a crushed monster that has been turned into a       //   |
@@ -2067,6 +2070,8 @@ void A_Fall(mobj_t *actor)
 // killough 11/98: kill an object
 void A_Die(mobj_t *actor)
 {
+  if (demo_version < 203)
+    return;
   P_DamageMobj(actor, NULL, NULL, actor->health);
 }
 
@@ -2085,6 +2090,8 @@ void A_Explode(mobj_t *thingy)
 
 void A_Detonate(mobj_t *mo)
 {
+  if (demo_version < 203)
+    return;
   P_RadiusAttack(mo, mo->target, mo->info->damage);
 }
 
@@ -2101,6 +2108,8 @@ void A_Mushroom(mobj_t *actor)
   fixed_t misc1 = actor->state->misc1 ? actor->state->misc1 : FRACUNIT*4;
   fixed_t misc2 = actor->state->misc2 ? actor->state->misc2 : FRACUNIT/2;
 
+  if (demo_version < 203)
+    return;
   A_Explode(actor);               // make normal explosion
 
   for (i = -n; i <= n; i += 8)    // launch mushroom cloud
@@ -2536,6 +2545,8 @@ void A_KeenDie(mobj_t* mo)
 
 void A_Spawn(mobj_t *mo)
 {
+  if (demo_version < 203)
+    return;
   if (mo->state->misc1)
     {
       mobj_t *newmobj = P_SpawnMobj(mo->x, mo->y, 
@@ -2548,16 +2559,22 @@ void A_Spawn(mobj_t *mo)
 
 void A_Turn(mobj_t *mo)
 {
+  if (demo_version < 203)
+    return;
   mo->angle += (angle_t)(((ULong64) mo->state->misc1 << 32) / 360);
 }
 
 void A_Face(mobj_t *mo)
 {
+  if (demo_version < 203)
+    return;
   mo->angle = (angle_t)(((ULong64) mo->state->misc1 << 32) / 360);
 }
 
 void A_Scratch(mobj_t *mo)
 {
+  if (demo_version < 203)
+    return;
   mo->target && (A_FaceTarget(mo), P_CheckMeleeRange(mo)) ?
     mo->state->misc2 ? S_StartSound(mo, mo->state->misc2) : (void) 0,
     P_DamageMobj(mo->target, mo, mo, mo->state->misc1) : (void) 0;
@@ -2565,11 +2582,15 @@ void A_Scratch(mobj_t *mo)
 
 void A_PlaySound(mobj_t *mo)
 {
+  if (demo_version < 203)
+    return;
   S_StartSound(mo->state->misc2 ? NULL : mo, mo->state->misc1);
 }
 
 void A_RandomJump(mobj_t *mo)
 {
+  if (demo_version < 203)
+    return;
   if (P_Random(pr_randomjump) < mo->state->misc2)
     P_SetMobjState(mo, mo->state->misc1);
 }
@@ -2580,6 +2601,8 @@ void A_RandomJump(mobj_t *mo)
 
 void A_LineEffect(mobj_t *mo)
 {
+  if (demo_version < 203)
+    return;
   if (!(mo->intflags & MIF_LINEDONE))                // Unless already used up
     {
       line_t junk = *lines;                          // Fake linedef set to 1st

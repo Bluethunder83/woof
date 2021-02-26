@@ -52,6 +52,11 @@ else()
     _checked_add_compile_option(-Wall)
 endif()
 
+option(ENABLE_WERROR "Treat warnings as errors" OFF)
+if(ENABLE_WERROR)
+  _checked_add_compile_option(-Werror)
+endif()
+
 if(${FORCE_COLORED_OUTPUT})
     _checked_add_compile_option(-fdiagnostics-color=always F_DIAG_COLOR)
     if (NOT F_DIAG_COLOR)
