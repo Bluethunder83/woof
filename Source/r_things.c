@@ -308,11 +308,11 @@ vissprite_t *R_NewVisSprite(void)
 int   *mfloorclip; // [FG] 32-bit integer math
 int   *mceilingclip; // [FG] 32-bit integer math
 fixed_t spryscale;
-fixed_t sprtopscreen;
+int64_t sprtopscreen; // [FG] 64-bit integer math
 
 void R_DrawMaskedColumn(column_t *column)
 {
-  int topscreen, bottomscreen;
+  int64_t topscreen, bottomscreen; // [FG] 64-bit integer math
   fixed_t basetexturemid = dc_texturemid;
   int top = -1;
   
@@ -334,8 +334,8 @@ void R_DrawMaskedColumn(column_t *column)
       bottomscreen = topscreen + spryscale*column->length;
 
       // Here's where "sparkles" come in -- killough:
-      dc_yl = (topscreen+FRACUNIT-1)>>FRACBITS;
-      dc_yh = (bottomscreen-1)>>FRACBITS;
+      dc_yl = (int)((topscreen+FRACUNIT-1)>>FRACBITS); // [FG] 64-bit integer math
+      dc_yh = (int)((bottomscreen-1)>>FRACBITS); // [FG] 64-bit integer math
 
       if (dc_yh >= mfloorclip[dc_x])
         dc_yh = mfloorclip[dc_x]-1;
@@ -675,7 +675,7 @@ void R_DrawPSprite (pspdef_t *psp)
   flip = (boolean) sprframe->flip[0];
 
   // calculate edges of the shape
-  tx = psp->sx-160*FRACUNIT;
+  tx = psp->sx2-160*FRACUNIT; // [FG] centered weapon sprite
 
   tx -= spriteoffset[lump];
   x1 = (centerxfrac + FixedMul (tx,pspritescale))>>FRACBITS;
@@ -697,7 +697,7 @@ void R_DrawPSprite (pspdef_t *psp)
 
   // killough 12/98: fix psprite positioning problem
   vis->texturemid = (BASEYCENTER<<FRACBITS) /* + FRACUNIT/2 */ -
-                    (psp->sy-spritetopoffset[lump]);
+                    (psp->sy2-spritetopoffset[lump]); // [FG] centered weapon sprite
 
   vis->x1 = x1 < 0 ? 0 : x1;
   vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;

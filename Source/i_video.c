@@ -47,6 +47,10 @@
 
 #include "icon.c"
 
+int SCREENWIDTH, SCREENHEIGHT;
+int NONWIDEWIDTH; // [crispy] non-widescreen SCREENWIDTH
+int WIDESCREENDELTA; // [crispy] horizontal widescreen offset
+
 static SDL_Surface *sdlscreen;
 
 // [FG] rendering window, renderer, intermediate ARGB frame buffer and texture
@@ -685,8 +689,11 @@ static unsigned int disk_to_draw, disk_to_restore;
 //      range of [0.0, 1.0).  Used for interpolation.
 fixed_t fractionaltic;
 
+static int useaspect, actualheight; // [FG] aspect ratio correction
 int uncapped; // [FG] uncapped rendering frame rate
+int integer_scaling; // [FG] force integer scales
 int fps; // [FG] FPS counter widget
+int widescreen; // widescreen mode
 
 void I_FinishUpdate(void)
 {
@@ -732,7 +739,7 @@ void I_FinishUpdate(void)
       }
    }
 
-   // [crispy] [AM] Real FPS counter
+   // [FG] [AM] Real FPS counter
    {
       static int lastmili;
       static int fpscount;
@@ -889,7 +896,64 @@ void I_ShutdownGraphics(void)
 // [FG] save screenshots in PNG format
 boolean I_WritePNGfile(char *filename)
 {
-  return IMG_SavePNG(sdlscreen, filename) == 0;
+  SDL_Rect rect = {0};
+  SDL_PixelFormat *format;
+  SDL_Surface *png_surface;
+  int pitch;
+  byte *pixels;
+  boolean ret;
+
+  // [FG] native PNG pixel format
+  const uint32_t png_format = SDL_PIXELFORMAT_RGB24;
+  format = SDL_AllocFormat(png_format);
+
+  // [FG] adjust cropping rectangle if necessary
+  SDL_GetRendererOutputSize(renderer, &rect.w, &rect.h);
+  if (useaspect || integer_scaling)
+  {
+    int temp;
+    if (integer_scaling)
+    {
+      int temp1, temp2, scale;
+      temp1 = rect.w;
+      temp2 = rect.h;
+      scale = MIN(rect.w / (SCREENWIDTH<<hires), rect.h / actualheight);
+
+      rect.w = (SCREENWIDTH<<hires) * scale;
+      rect.h = actualheight * scale;
+
+      rect.x = (temp1 - rect.w) / 2;
+      rect.y = (temp2 - rect.h) / 2;
+    }
+    else
+    if (rect.w * actualheight > rect.h * (SCREENWIDTH<<hires))
+    {
+      temp = rect.w;
+      rect.w = rect.h * (SCREENWIDTH<<hires) / actualheight;
+      rect.x = (temp - rect.w) / 2;
+    }
+    else
+    if (rect.h * (SCREENWIDTH<<hires) > rect.w * actualheight)
+    {
+      temp = rect.h;
+      rect.h = rect.w * actualheight / (SCREENWIDTH<<hires);
+      rect.y = (temp - rect.h) / 2;
+    }
+  }
+
+  // [FG] allocate memory for screenshot image
+  pitch = rect.w * format->BytesPerPixel;
+  pixels = malloc(rect.h * pitch);
+  SDL_RenderReadPixels(renderer, &rect, format->format, pixels, pitch);
+  png_surface = SDL_CreateRGBSurfaceWithFormatFrom(pixels, rect.w, rect.h, format->BitsPerPixel, pitch, png_format);
+
+  ret = (IMG_SavePNG(png_surface, filename) == 0);
+
+  SDL_FreeSurface(png_surface);
+  SDL_FreeFormat(format);
+  free(pixels);
+
+  return ret;
 }
 
 // Set the application icon
@@ -915,6 +979,62 @@ int cfg_aspectratio; // haleyjd 05/11/09: aspect ratio correction
 // haleyjd 05/11/09: true if called from I_ResetScreen
 static boolean changeres = false;
 
+// [crispy] re-calculate SCREENWIDTH, SCREENHEIGHT, NONWIDEWIDTH and WIDESCREENDELTA
+void I_GetScreenDimensions(void)
+{
+   SDL_DisplayMode mode;
+   int w = 16, h = 10;
+   int ah;
+
+   SCREENWIDTH = ORIGWIDTH;
+   SCREENHEIGHT = ORIGHEIGHT;
+
+   NONWIDEWIDTH = SCREENWIDTH;
+
+   ah = useaspect ? (6 * SCREENHEIGHT / 5) : SCREENHEIGHT;
+
+   if (SDL_GetCurrentDisplayMode(0/*video_display*/, &mode) == 0)
+   {
+      // [crispy] sanity check: really widescreen display?
+      if (mode.w * ah >= mode.h * SCREENWIDTH)
+      {
+         w = mode.w;
+         h = mode.h;
+      }
+   }
+
+   // [crispy] widescreen rendering makes no sense without aspect ratio correction
+   if (widescreen && useaspect)
+   {
+      // switch(crispy->widescreen)
+      // {
+      //     case RATIO_16_10:
+      //         w = 16;
+      //         h = 10;
+      //         break;
+      //     case RATIO_16_9:
+      //         w = 16;
+      //         h = 9;
+      //         break;
+      //     case RATIO_21_9:
+      //         w = 21;
+      //         h = 9;
+      //         break;
+      //     default:
+      //         break;
+      // }
+
+      SCREENWIDTH = w * ah / h;
+      // [crispy] make sure SCREENWIDTH is an integer multiple of 4 ...
+      SCREENWIDTH = (SCREENWIDTH + (hires ? 0 : 3)) & (int)~3;
+      // [crispy] ... but never exceeds MAXWIDTH (array size!)
+      SCREENWIDTH = MIN(SCREENWIDTH, MAX_SCREENWIDTH);
+   }
+
+   WIDESCREENDELTA = (SCREENWIDTH - NONWIDEWIDTH) / 2;
+}
+
+
 //
 // killough 11/98: New routine, for setting hires and page flipping
 //
@@ -924,15 +1044,13 @@ static void I_InitGraphicsMode(void)
    static boolean firsttime = true;
    
    // haleyjd
-   int v_w = SCREENWIDTH;
-   int v_h = SCREENHEIGHT;
+   int v_w = ORIGWIDTH;
+   int v_h = ORIGHEIGHT;
    int flags = 0;
    int scalefactor = cfg_scalefactor;
    int usehires = hires;
-   int useaspect = cfg_aspectratio;
 
    // [FG] SDL2
-   int actualheight;
    uint32_t pixel_format;
    int video_display;
    SDL_DisplayMode mode;
@@ -948,10 +1066,21 @@ static void I_InitGraphicsMode(void)
          usehires = hires = false; // grrr...
    }
 
+   useaspect = cfg_aspectratio;
+   if(M_CheckParm("-aspect"))
+      useaspect = true;
+
+   I_GetScreenDimensions();
+
    if(usehires)
    {
       v_w = SCREENWIDTH*2;
       v_h = SCREENHEIGHT*2;
+   }
+   else
+   {
+      v_w = SCREENWIDTH;
+      v_h = SCREENHEIGHT;
    }
 
    blit_rect.w = v_w;
@@ -979,6 +1108,8 @@ static void I_InitGraphicsMode(void)
       flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
    }
 
+   if (scalefactor == 1 && usehires == false)
+      scalefactor = 2;
    if(M_CheckParm("-1"))
       scalefactor = 1;
    else if(M_CheckParm("-2"))
@@ -989,9 +1120,6 @@ static void I_InitGraphicsMode(void)
       scalefactor = 4;
    else if(M_CheckParm("-5"))
       scalefactor = 5;
-
-   if(M_CheckParm("-aspect"))
-      useaspect = true;
 
    actualheight = useaspect ? (6 * v_h / 5) : v_h;
 
@@ -1086,6 +1214,9 @@ static void I_InitGraphicsMode(void)
 
    SDL_RenderSetLogicalSize(renderer, v_w, actualheight);
 
+   // [FG] force integer scales
+   SDL_RenderSetIntegerScale(renderer, integer_scaling);
+
    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
    SDL_RenderClear(renderer);
    SDL_RenderPresent(renderer);
@@ -1144,6 +1275,18 @@ static void I_InitGraphicsMode(void)
                                pixel_format,
                                SDL_TEXTUREACCESS_STREAMING,
                                v_w, v_h);
+
+   // Workaround for SDL 2.0.14 alt-tab bug (taken from Doom Retro)
+#if defined(_WIN32)
+   {
+      SDL_version ver;
+      SDL_GetVersion(&ver);
+      if (ver.major == 2 && ver.minor == 0 && ver.patch == 14)
+      {
+         SDL_SetHintWithPriority(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "1", SDL_HINT_OVERRIDE);
+      }
+   }
+#endif
 
    V_Init();
 

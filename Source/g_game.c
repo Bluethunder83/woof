@@ -97,6 +97,7 @@ int             gametic;
 int             levelstarttic; // gametic at level start
 int             basetic;       // killough 9/29/98: for demo sync
 int             totalkills, totalitems, totalsecret;    // for intermission
+int             totalleveltimes; // [FG] total time for all completed levels
 boolean         demorecording;
 boolean         demoplayback;
 boolean         singledemo;           // quit after playing a demo from cmdline
@@ -123,6 +124,9 @@ int     key_menu_escape;                                     //     |
 int     key_menu_enter;                                      // phares 3/7/98
 // [FG] clear key bindings with the DEL key
 int     key_menu_clear;
+// [FG] reload current level / go to next level
+int     key_menu_reloadlevel;
+int     key_menu_nextlevel;
 int     key_strafeleft;
 int     key_straferight;
 int     key_fire;
@@ -183,9 +187,13 @@ int     key_setup;                  // killough 10/98: shortcut to setup menu
 int     mousebfire;
 int     mousebstrafe;
 int     mousebforward;
+// [FG] mouse button for "use"
+int     mousebuse;
 // [FG] prev/next weapon keys and buttons
 int     mousebprevweapon;
 int     mousebnextweapon;
+// [FG] double click acts as "use"
+int     dclick_use;
 int     joybfire;
 int     joybstrafe;
 // [FG] strafe left/right joystick buttons
@@ -359,7 +367,8 @@ void G_BuildTiccmd(ticcmd_t* cmd)
 
   strafe = gamekeydown[key_strafe] || mousebuttons[mousebstrafe]
     || joybuttons[joybstrafe];
-  speed = autorun || gamekeydown[key_speed] || joybuttons[joybspeed]; // phares
+  // [FG] speed key inverts autorun
+  speed = autorun ^ (gamekeydown[key_speed] || joybuttons[joybspeed]); // phares
 
   forward = side = 0;
 
@@ -430,7 +439,7 @@ void G_BuildTiccmd(ticcmd_t* cmd)
       joybuttons[joybfire])
     cmd->buttons |= BT_ATTACK;
 
-  if (gamekeydown[key_use] || joybuttons[joybuse])
+  if (gamekeydown[key_use] || mousebuttons[mousebuse] || joybuttons[joybuse]) // [FG] mouse button for "use"
     {
       cmd->buttons |= BT_USE;
       // clear double clicks if hit use button
@@ -528,6 +537,9 @@ void G_BuildTiccmd(ticcmd_t* cmd)
   if (mousebuttons[mousebforward])
     forward += forwardmove[speed];
 
+  // [FG] double click acts as "use"
+  if (dclick_use)
+  {
     // forward double click
   if (mousebuttons[mousebforward] != dclickstate && dclicktime > 1 )
     {
@@ -571,6 +583,7 @@ void G_BuildTiccmd(ticcmd_t* cmd)
         dclicks2 = 0;
         dclickstate2 = 0;
       }
+  }
 
   forward += mousey;
   if (strafe)
@@ -1081,6 +1094,9 @@ static void G_DoCompleted(void)
               sizeof(wminfo.plyr[i].frags));
     }
 
+  // [FG] total time for all completed levels
+  wminfo.totaltimes = (totalleveltimes += (leveltime - leveltime % TICRATE));
+
   gamestate = GS_INTERMISSION;
   viewactive = false;
   automapactive = false;
@@ -1144,6 +1160,16 @@ static void G_DoPlayDemo(void)
 
   demo_version =      // killough 7/19/98: use the version id stored in demo
   demover = *demo_p++;
+
+  // [FG] PrBoom's own demo format starts with demo version 210
+  if (demover >= 210)
+  {
+    fprintf(stderr,"G_DoPlayDemo: Unknown demo format %d.\n", demover);
+    gameaction = ga_nothing;
+    demoplayback = true;
+    G_CheckDemoStatus();
+    return;
+  }
 
   if (demover < 200)     // Autodetect old demos
     {
@@ -1260,6 +1286,14 @@ static void G_DoPlayDemo(void)
     players[i].cheats = 0;
 
   gameaction = ga_nothing;
+
+  // [FG] report compatibility mode
+  fprintf(stderr, "G_DoPlayDemo: Playing demo with %s (%d) compatibility.\n",
+    demover >= 203 ? "MBF" :
+    demover >= 200 ? (compatibility ? "Boom compatibility" : "Boom") :
+    gameversion == exe_final ? "Final Doom" :
+    gameversion == exe_ultimate ? "Ultimate Doom" :
+    "Doom 1.9", demover);
 }
 
 #define VERSIONSIZE   16
@@ -1457,6 +1491,11 @@ static void G_DoSaveGame(void)
 
   *save_p++ = 0xe6;   // consistancy marker
 
+  // [FG] save total time for all completed levels
+  CheckSaveGame(sizeof totalleveltimes);
+  memcpy(save_p, &totalleveltimes, sizeof totalleveltimes);
+  save_p += sizeof totalleveltimes;
+
   length = save_p - savebuffer;
 
   Z_CheckHeap();
@@ -1475,13 +1514,13 @@ static void G_DoSaveGame(void)
 
 static void G_DoLoadGame(void)
 {
-  int  i;
+  int  length, i;
   char vcheck[VERSIONSIZE];
   ULong64 checksum;
 
   gameaction = ga_nothing;
 
-  M_ReadFile(savename, &savebuffer);
+  length = M_ReadFile(savename, &savebuffer);
   save_p = savebuffer + SAVESTRINGSIZE;
 
   // skip the description field
@@ -1534,11 +1573,16 @@ static void G_DoLoadGame(void)
   // killough 11/98: simplify
   idmusnum = *(signed char *) save_p++;
 
+  /* cph 2001/05/23 - Must read options before we set up the level */
+  G_ReadOptions(save_p);
+
   // load a base level
   G_InitNew(gameskill, gameepisode, gamemap);
 
   // killough 3/1/98: Read game options
   // killough 11/98: move down to here
+  /* cph - MBF needs to reread the savegame options because G_InitNew
+   * rereads the WAD options. The demo playback code does this too. */
   save_p = G_ReadOptions(save_p);
 
   // get the times
@@ -1560,6 +1604,13 @@ static void G_DoLoadGame(void)
 
   if (*save_p != 0xe6)
     I_Error ("Bad savegame");
+
+  // [FG] restore total time for all completed levels
+  if (save_p++ - savebuffer < length - sizeof totalleveltimes)
+  {
+    memcpy(&totalleveltimes, save_p, sizeof totalleveltimes);
+    save_p += sizeof totalleveltimes;
+  }
 
   // done
   Z_Free(savebuffer);
@@ -1584,6 +1635,17 @@ static void G_DoLoadGame(void)
     else       // Loading games from menu isn't allowed during demo recordings,
       if (demorecording) // So this can only possibly be a -recordfrom command.
 	G_BeginRecording();// Start the -recordfrom, since the game was loaded.
+
+  // [FG] log game loading
+  {
+    const int time = leveltime / TICRATE;
+    const int ttime = (totalleveltimes + leveltime) / TICRATE;
+
+    fprintf(stderr, "G_DoLoadGame: Slot %d, %.8s (%s), Skill %d, Time %02d:%02d:%02d/%02d:%02d:%02d\n",
+      savegameslot, lumpinfo[maplumpnum].name, W_WadNameForLump(maplumpnum), gameskill,
+      time/3600, (time%3600)/60, time%60,
+      ttime/3600, (ttime%3600)/60, ttime%60);
+  }
 }
 
 //
@@ -2183,6 +2245,9 @@ void G_InitNew(skill_t skill, int episode, int map)
   gameepisode = episode;
   gamemap = map;
   gameskill = skill;
+
+  // [FG] total time for all completed levels
+  totalleveltimes = 0;
 
   //jff 4/16/98 force marks on automap cleared every new level start
   AM_clearMarks();

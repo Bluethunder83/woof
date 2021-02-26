@@ -610,7 +610,7 @@ void P_NightmareRespawn(mobj_t* mobj)
 
 void P_MobjThinker (mobj_t* mobj)
 {
-  // [crispy] suppress interpolation of player missiles for the first tic
+  // [FG] suppress interpolation of player missiles for the first tic
   if (mobj->interp == -1)
   {
       mobj->interp = false;
@@ -788,6 +788,10 @@ void P_RemoveMobj (mobj_t *mobj)
 
   // stop any playing sound
 
+  // [FG] removed map objects may finish their sounds
+  if (full_sounds)
+    S_UnlinkSound(mobj);
+  else
   S_StopSound (mobj);
 
   // killough 11/98:
@@ -1287,7 +1291,7 @@ void P_SpawnPlayerMissile(mobj_t* source,mobjtype_t type)
   th->momx = FixedMul(th->info->speed,finecosine[an>>ANGLETOFINESHIFT]);
   th->momy = FixedMul(th->info->speed,finesine[an>>ANGLETOFINESHIFT]);
   th->momz = FixedMul(th->info->speed,slope);
-  // [crispy] suppress interpolation of player missiles for the first tic
+  // [FG] suppress interpolation of player missiles for the first tic
   th->interp = -1;
 
   P_CheckMissileSpawn(th);

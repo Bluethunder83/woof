@@ -372,7 +372,7 @@ void D_PageDrawer(void)
       unsigned c = 0;
       while (s--)
 	c = c*3 + t[s];
-      V_DrawPatch(0, 0, 0, (patch_t *) t);
+      V_DrawPatchFullScreen(0, (patch_t *) t);
       if (c==2119826587u || c==2391756584u)
         // [FG] removed the embedded DOGOVRLY title pic overlay graphic lump
         if (W_CheckNumForName("DOGOVRLY") > 0)
@@ -1173,7 +1173,7 @@ static boolean D_IsIWADName(const char *name)
 
     for (i = 0; i < nstandard_iwads; i++)
     {
-        if (!strcasecmp(name, standard_iwads[i] + 1)) // [crispy] skip leading slash
+        if (!strcasecmp(name, standard_iwads[i] + 1)) // [FG] skip leading slash
         {
             return true;
         }

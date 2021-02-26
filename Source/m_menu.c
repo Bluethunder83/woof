@@ -51,6 +51,8 @@
 #include "d_deh.h"
 #include "m_misc.h"
 #include "m_misc2.h" // [FG] M_StringDuplicate()
+#include "p_setup.h" // [FG] maplumpnum
+#include "w_wad.h" // [FG] W_IsIWADLump() / W_WadNameForLump()
 
 extern patch_t* hu_font[HU_FONTSIZE];
 extern boolean  message_dontfuckwithme;
@@ -164,9 +166,13 @@ menu_t* currentMenu; // current menudef
 extern int mousebfire;                                   
 extern int mousebstrafe;                               
 extern int mousebforward;
+// [FG] mouse button for "use"
+extern int mousebuse;
 // [FG] prev/next weapon keys and buttons
 extern int mousebprevweapon;
 extern int mousebnextweapon;
+// [FG] double click acts as "use"
+extern int dclick_use;
 extern int joybfire;
 extern int joybstrafe;                               
 // [FG] strafe left/right joystick buttons
@@ -915,6 +921,56 @@ void M_DoSave(int slot)
     quickSaveSlot = slot;
 }
 
+// [FG] generate a default save slot name when the user saves to an empty slot
+static void SetDefaultSaveName (int slot)
+{
+    // map from IWAD or PWAD?
+    if (W_IsIWADLump(maplumpnum))
+    {
+        snprintf(savegamestrings[itemOn], SAVESTRINGSIZE,
+                   "%s", lumpinfo[maplumpnum].name);
+    }
+    else
+    {
+        char *wadname = M_StringDuplicate(W_WadNameForLump(maplumpnum));
+        char *ext = strrchr(wadname, '.');
+
+        if (ext != NULL)
+        {
+            *ext = '\0';
+        }
+
+        snprintf(savegamestrings[itemOn], SAVESTRINGSIZE,
+                   "%s (%s)", lumpinfo[maplumpnum].name,
+                   wadname);
+        (free)(wadname);
+    }
+
+    M_ForceUppercase(savegamestrings[itemOn]);
+}
+
+// [FG] override savegame name if it already starts with a map identifier
+static boolean StartsWithMapIdentifier (char *str)
+{
+    M_ForceUppercase(str);
+
+    if (strlen(str) >= 4 &&
+        str[0] == 'E' && isdigit(str[1]) &&
+        str[2] == 'M' && isdigit(str[3]))
+    {
+        return true;
+    }
+
+    if (strlen(str) >= 5 &&
+        str[0] == 'M' && str[1] == 'A' && str[2] == 'P' &&
+        isdigit(str[3]) && isdigit(str[4]))
+    {
+        return true;
+    }
+
+    return false;
+}
+
 //
 // User wants to save. Start string input for M_Responder
 //
@@ -925,8 +981,13 @@ void M_SaveSelect(int choice)
   
   saveSlot = choice;
   strcpy(saveOldString,savegamestrings[choice]);
-  if (!strcmp(savegamestrings[choice],s_EMPTYSTRING)) // Ty 03/27/98 - externalized
+  // [FG] override savegame name if it already starts with a map identifier
+  if (!strcmp(savegamestrings[choice],s_EMPTYSTRING) || // Ty 03/27/98 - externalized
+      StartsWithMapIdentifier(savegamestrings[choice]))
+  {
     savegamestrings[choice][0] = 0;
+    SetDefaultSaveName(choice);
+  }
   saveCharIndex = strlen(savegamestrings[choice]);
 }
 
@@ -1723,25 +1784,42 @@ void M_DrawBackground(char* patchname, byte *back_dest)
 	  back_dest += 64;
 	}
 #else              // while this pixel-doubles it
+/*
       for (y = 0 ; y < SCREENHEIGHT ; src = ((++y & 63)<<6) + back_src,
-	     back_dest += SCREENWIDTH*2)
-	for (x = 0 ; x < SCREENWIDTH/64 ; x++)
-	  {
-	    int i = 63;
-	    do
-	      back_dest[i*2] = back_dest[i*2+SCREENWIDTH*2] =
-		back_dest[i*2+1] = back_dest[i*2+SCREENWIDTH*2+1] = src[i];
-	    while (--i>=0);
-	    back_dest += 128;
-	  }
+       back_dest += SCREENWIDTH*2)
+  for (x = 0 ; x < SCREENWIDTH/64 ; x++)
+    {
+      int i = 63;
+      do
+        back_dest[i*2] = back_dest[i*2+SCREENWIDTH*2] =
+    back_dest[i*2+1] = back_dest[i*2+SCREENWIDTH*2+1] = src[i];
+      while (--i>=0);
+      back_dest += 128;
+    }
+*/
+    for (int y = 0; y < SCREENHEIGHT<<1; y++)
+      for (int x = 0; x < SCREENWIDTH<<1; x += 2)
+      {
+          const byte dot = src[(((y>>1)&63)<<6) + ((x>>1)&63)];
+
+          *back_dest++ = dot;
+          *back_dest++ = dot;
+      }
 #endif
   else
+/*
     for (y = 0 ; y < SCREENHEIGHT ; src = ((++y & 63)<<6) + back_src)
       for (x = 0 ; x < SCREENWIDTH/64 ; x++)
-	{
-	  memcpy (back_dest,back_src+((y & 63)<<6),64);
-	  back_dest += 64;
-	}
+  {
+    memcpy (back_dest,back_src+((y & 63)<<6),64);
+    back_dest += 64;
+  }
+*/
+    for (y = 0; y < SCREENHEIGHT; y++)
+      for (x = 0; x < SCREENWIDTH; x++)
+      {
+        *back_dest++ = src[((y&63)<<6) + (x&63)];
+      }
 }
 
 /////////////////////////////
@@ -1928,13 +2006,13 @@ void M_DrawSetting(setup_menu_t* s)
       if (key)
 	{
 	  M_GetKeyString(*key,0); // string to display
-	  if (key == &key_use)
+	  if (key == &key_use && dclick_use && mousebuse == -1)
 	    {
 	      // For the 'use' key, you have to build the string
       
 	      if (s->m_mouse)
 		sprintf(menu_buffer+strlen(menu_buffer), "/DBL-CLK MB%d",
-			*s->m_mouse+1);
+			mousebforward>-1?mousebforward+1:mousebstrafe+1);
 	      if (s->m_joy)
 		sprintf(menu_buffer+strlen(menu_buffer), "/JSB%d", 
 			*s->m_joy+1);
@@ -1990,7 +2068,7 @@ void M_DrawSetting(setup_menu_t* s)
        
       for (i = 0 ; i < (CHIP_SIZE+2)*(CHIP_SIZE+2) ; i++)
 	*ptr++ = PAL_BLACK;
-      V_DrawBlock(x,y-1,0,CHIP_SIZE+2,CHIP_SIZE+2,colorblock);
+      V_DrawBlock(x+WIDESCREENDELTA,y-1,0,CHIP_SIZE+2,CHIP_SIZE+2,colorblock);
       
       // draw the paint chip
        
@@ -2002,7 +2080,7 @@ void M_DrawSetting(setup_menu_t* s)
 	  ptr = colorblock;
 	  for (i = 0 ; i < CHIP_SIZE*CHIP_SIZE ; i++)
 	    *ptr++ = ch;
-	  V_DrawBlock(x+1,y,0,CHIP_SIZE,CHIP_SIZE,colorblock);
+	  V_DrawBlock(x+1+WIDESCREENDELTA,y,0,CHIP_SIZE,CHIP_SIZE,colorblock);
 	}
       // [FG] print a blinking "arrow" next to the currently highlighted menu item
       if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
@@ -2060,6 +2138,20 @@ void M_DrawSetting(setup_menu_t* s)
       // Draw the setting for the item
 
       strcpy(menu_buffer,text);
+      // [FG] print a blinking "arrow" next to the currently highlighted menu item
+      if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
+        strcat(menu_buffer, " <");
+      M_DrawMenuString(x,y,color);
+      return;
+    }
+
+  // [FG] selection of choices
+
+  if (flags & S_CHOICE)
+    {
+      int i = s->var.def->location->i;
+      if (i >= 0 && s->selectstrings[i])
+        strcpy(menu_buffer, s->selectstrings[i]);
       // [FG] print a blinking "arrow" next to the currently highlighted menu item
       if (s == current_setup_menu + set_menu_itemon && whichSkull && !setup_select)
         strcat(menu_buffer, " <");
@@ -2226,13 +2318,86 @@ void M_DrawInstructions()
       flags & S_RESET  ? 43 : 0  /* when you're changing something */        :
       flags & S_RESET  ? (s = "Press ENTER key to reset to defaults", 43)    :
       // [FG] clear key bindings with the DEL key
-      flags & S_KEY    ? (s = "Press Enter to Change, Del to Clear", 43)    :
+      flags & S_KEY    ? (s = "Press Enter to Change, Del to Clear", 43)     :
+      // [FG] selection of choices
+      flags & S_CHOICE ? (s = "Press left or right to choose", 70)           :
       (s = "Press Enter to Change", 91);
     strcpy(menu_buffer, s);
     M_DrawMenuString(x,20,color);
   }
 }
 
+// [FG] reload current level / go to next level
+// adapted from prboom-plus/src/e6y.c:369-449
+static int G_ReloadLevel(void)
+{
+	int result = false;
+
+	if (gamestate == GS_LEVEL &&
+	    !deathmatch && !netgame &&
+	    !demorecording && !demoplayback &&
+	    !menuactive)
+	{
+		G_DeferedInitNew(gameskill, gameepisode, gamemap);
+		result = true;
+	}
+
+	return result;
+}
+
+static int G_GotoNextLevel(void)
+{
+	int changed = false;
+
+	byte doom_next[4][9] = {
+		{12, 13, 19, 15, 16, 17, 18, 21, 14},
+		{22, 23, 24, 25, 29, 27, 28, 31, 26},
+		{32, 33, 34, 35, 36, 39, 38, 41, 37},
+		{42, 49, 44, 45, 46, 47, 48, 11, 43}};
+	byte doom2_next[32] = {
+		 2,  3,  4,  5,  6,  7,  8,  9, 10, 11,
+		12, 13, 14, 15, 31, 17, 18, 19, 20, 21,
+		22, 23, 24, 25, 26, 27, 28, 29, 30,  1,
+		32, 16};
+
+	if (gamemode == commercial)
+	{
+		if (!haswolflevels)
+			doom2_next[14] = 16;
+	}
+	else
+	{
+		if (gamemode == shareware)
+			doom_next[0][7] = 11;
+
+		if (gamemode == registered)
+			doom_next[2][7] = 11;
+	}
+
+	if (gamestate == GS_LEVEL &&
+	    !deathmatch && !netgame &&
+	    !demorecording && !demoplayback &&
+	    !menuactive)
+	{
+		int epsd, map;
+
+		if (gamemode == commercial)
+		{
+			epsd = gameepisode;
+			map = doom2_next[gamemap-1];
+		}
+		else
+		{
+			epsd = doom_next[gameepisode-1][gamemap-1] / 10;
+			map = doom_next[gameepisode-1][gamemap-1] % 10;
+		}
+
+		G_DeferedInitNew(gameskill, epsd, map);
+		changed = true;
+	}
+
+	return changed;
+}
 
 /////////////////////////////
 //
@@ -2318,7 +2483,7 @@ setup_menu_t keys_settings1[] =  // Key Binding screen strings
   {"STRAFE"      ,S_KEY       ,m_scrn,KB_X,KB_Y+8*8,{&key_strafe},&mousebstrafe,&joybstrafe},
   {"AUTORUN"     ,S_KEY       ,m_scrn,KB_X,KB_Y+9*8,{&key_autorun}},
   {"180 TURN"    ,S_KEY       ,m_scrn,KB_X,KB_Y+10*8,{&key_reverse}},
-  {"USE"         ,S_KEY       ,m_scrn,KB_X,KB_Y+11*8,{&key_use},&mousebforward,&joybuse},
+  {"USE"         ,S_KEY       ,m_scrn,KB_X,KB_Y+11*8,{&key_use},&mousebuse,&joybuse},
 
   {"MENUS"       ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y+12*8},
   {"NEXT ITEM"   ,S_KEY       ,m_menu,KB_X,KB_Y+13*8,{&key_menu_down}},
@@ -2399,6 +2564,10 @@ setup_menu_t keys_settings3[] =  // Key Binding screen strings
   // [FG] prev/next weapon keys and buttons
   {"PREV"    ,S_KEY       ,m_scrn,KB_X,KB_Y+12*8,{&key_prevweapon},&mousebprevweapon,&joybprevweapon},
   {"NEXT"    ,S_KEY       ,m_scrn,KB_X,KB_Y+13*8,{&key_nextweapon},&mousebnextweapon,&joybnextweapon},
+  // [FG] reload current level / go to next level
+  {"LEVELS"      ,S_SKIP|S_TITLE,m_null,KB_X,KB_Y+14*8},
+  {"RELOAD LEVEL",S_KEY   ,m_scrn,KB_X,KB_Y+15*8,{&key_menu_reloadlevel}},
+  {"NEXT LEVEL"  ,S_KEY   ,m_scrn,KB_X,KB_Y+16*8,{&key_menu_nextlevel}},
 
   {"<- PREV",S_SKIP|S_PREV,m_null,KB_PREV,KB_Y+20*8, {keys_settings2}},
   {"NEXT ->",S_SKIP|S_NEXT,m_null,KB_NEXT,KB_Y+20*8, {keys_settings4}},
@@ -2502,6 +2671,7 @@ enum {           // killough 10/98: enum for y-offset info
   weap_recoil,
   weap_bobbing,
   weap_bfg,
+  weap_center, // [FG] centered weapon sprite
   weap_stub1,
   weap_pref1,
   weap_pref2,
@@ -2525,6 +2695,11 @@ setup_menu_t* weap_settings[] =
   NULL
 };
 
+// [FG] centered or bobbing weapon sprite
+static const char *weapon_attack_alignment_strings[] = {
+  "OFF", "CENTERED", "BOBBING", NULL
+};
+
 setup_menu_t weap_settings1[] =  // Weapons Settings screen       
 {
   {"ENABLE RECOIL", S_YESNO,m_null,WP_X, WP_Y+ weap_recoil*8, {"weapon_recoil"}},
@@ -2532,6 +2707,9 @@ setup_menu_t weap_settings1[] =  // Weapons Settings screen
 
   {"CLASSIC BFG"      ,S_YESNO,m_null,WP_X,  // killough 8/8/98
    WP_Y+ weap_bfg*8, {"classic_bfg"}},
+
+  // [FG] centered or bobbing weapon sprite
+  {"Weapon Attack Alignment",S_CHOICE,m_null,WP_X, WP_Y+weap_center*8, {"center_weapon"}, 0, 0, NULL, weapon_attack_alignment_strings},
 
   {"1ST CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref1*8, {"weapon_choice_1"}},
   {"2nd CHOICE WEAPON",S_WEAP,m_null,WP_X,WP_Y+weap_pref2*8, {"weapon_choice_2"}},
@@ -2722,6 +2900,11 @@ setup_menu_t auto_settings1[] =  // 1st AutoMap Settings screen
   {"Show Secrets only after entering",S_YESNO,m_null,AU_X,AU_Y+15*8, {"map_secret_after"}},
 
   {"Show coordinates of automap pointer",S_YESNO,m_null,AU_X,AU_Y+16*8, {"map_point_coord"}},  // killough 10/98
+
+  // [FG] show level statistics and level time widgets
+  {"Show player coords", S_YESNO,m_null,AU_X,AU_Y+17*8, {"map_player_coords"}},
+  {"Show level stats",   S_YESNO,m_null,AU_X,AU_Y+18*8, {"map_level_stats"}},
+  {"Show level time",    S_YESNO,m_null,AU_X,AU_Y+19*8, {"map_level_time"}},
 
   // Button for resetting to defaults
   {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
@@ -2989,6 +3172,8 @@ enum {
   general_fullscreen,
   // [FG] uncapped rendering frame rate
   general_uncapped,
+  // widescreen mode
+  general_widescreen
 };
 
 enum {
@@ -2996,15 +3181,17 @@ enum {
 /*
   general_sndcard,
   general_muscard,
-*/
   general_detvoices,
+*/
   general_sndchan,
-  general_pitch
+  general_pitch,
+  // [FG] play sounds in full length
+  general_fullsnd
 };
 
 #define G_X 250
 #define G_Y  44
-#define G_Y2 (G_Y+82+16) // [FG] remove sound and music card items
+#define G_Y2 (G_Y+92+16) // [FG] remove sound and music card items
 #define G_Y3 (G_Y+44)
 #define G_Y4 (G_Y3+52)
 #define GF_X 76
@@ -3047,6 +3234,9 @@ setup_menu_t gen_settings1[] = { // General Settings screen1
   {"Uncapped Rendering Frame Rate", S_YESNO, m_null, G_X, G_Y + general_uncapped*8,
    {"uncapped"}},
 
+  {"Widescreen Mode", S_YESNO, m_null, G_X, G_Y + general_widescreen*8,
+   {"widescreen"}, 0, 0, I_ResetScreen},
+
   {"Sound & Music", S_SKIP|S_TITLE, m_null, G_X, G_Y2 - 12},
 
 // [FG] remove sound and music card items
@@ -3056,16 +3246,20 @@ setup_menu_t gen_settings1[] = { // General Settings screen1
 
   {"Music Card", S_NUM|S_PRGWARN, m_null, G_X,
    G_Y2 + general_muscard*8, {"music_card"}},
-*/
 
   {"Autodetect Number of Voices", S_YESNO|S_PRGWARN, m_null, G_X,
    G_Y2 + general_detvoices*8, {"detect_voices"}},
+*/
 
   {"Number of Sound Channels", S_NUM|S_PRGWARN, m_null, G_X,
    G_Y2 + general_sndchan*8, {"snd_channels"}},
 
   {"Enable v1.1 Pitch Effects", S_YESNO, m_null, G_X,
    G_Y2 + general_pitch*8, {"pitched_sounds"}},
+
+  // [FG] play sounds in full length
+  {"play sounds in full length", S_YESNO, m_null, G_X,
+   G_Y2 + general_fullsnd*8, {"full_sounds"}},
 
   // Button for resetting to defaults
   {0,S_RESET,m_null,X_BUTTON,Y_BUTTON},
@@ -3104,6 +3298,10 @@ setup_menu_t gen_settings2[] = { // General Settings screen2
 
   {"Enable Joystick", S_YESNO, m_null, G_X,
    G_Y + general_joy*8, {"use_joystick"}, 0, 0, I_InitJoystick},
+
+  // [FG] double click acts as "use"
+  {"Double Click acts as \"Use\"", S_YESNO, m_null, G_X,
+   G_Y + general_leds*8, {"dclick_use"}},
 
 #if 0
   {"Keyboard LEDs Always Off", S_YESNO, m_null, G_X,
@@ -4002,7 +4200,7 @@ setup_menu_t helpstrings[] =  // HELP screen strings
   {"STRAFE"      ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 8*8,{&key_strafe},&mousebstrafe,&joybstrafe},
   {"AUTORUN"     ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+ 9*8,{&key_autorun}},
   {"180 TURN"    ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+10*8,{&key_reverse}},
-  {"USE"         ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+11*8,{&key_use},&mousebforward,&joybuse},
+  {"USE"         ,S_SKIP|S_KEY,m_null,KT_X3,KT_Y3+11*8,{&key_use},&mousebuse,&joybuse},
 
   {"GAME"        ,S_SKIP|S_TITLE,m_null,KT_X2,KT_Y1},
   {"SAVE"        ,S_SKIP|S_KEY,m_null,KT_X2,KT_Y1+ 1*8,{&key_savegame}},
@@ -4569,6 +4767,18 @@ boolean M_Responder (event_t* ev)
 	  M_SetupNextMenu(&SetupDef);
 	  return true;
 	}
+
+	// [FG] reload current level / go to next level
+	if (ch != 0 && ch == key_menu_reloadlevel)
+	{
+		if (G_ReloadLevel())
+			return true;
+	}
+	if (ch != 0 && ch == key_menu_nextlevel)
+	{
+		if (G_GotoNextLevel())
+			return true;
+	}
     }                               
   
   // Pop-up Main menu?
@@ -4653,6 +4863,52 @@ boolean M_Responder (event_t* ev)
 		    ptr1->action();
 		}
 	      M_SelectDone(ptr1);                           // phares 4/17/98
+	      return true;
+	    }
+
+	  // [FG] selection of choices
+
+	  if (ptr1->m_flags & S_CHOICE)
+	    {
+	      int value = ptr1->var.def->location->i;
+	      if (ch == key_menu_left)
+		{
+		  value--;
+		  if (ptr1->var.def->limit.min != UL &&
+		      value < ptr1->var.def->limit.min)
+			value = ptr1->var.def->limit.min;
+		  if (ptr1->var.def->location->i != value)
+			S_StartSound(NULL,sfx_pstop);
+		  ptr1->var.def->location->i = value;
+		}
+	      if (ch == key_menu_right)
+		{
+		  value++;
+		  if (ptr1->var.def->limit.max != UL &&
+		      value > ptr1->var.def->limit.max)
+			value = ptr1->var.def->limit.max;
+		  if (ptr1->var.def->location->i != value)
+			S_StartSound(NULL,sfx_pstop);
+		  ptr1->var.def->location->i = value;
+		}
+	      if (ch == key_menu_enter)
+		{
+		  if (ptr1->m_flags & (S_LEVWARN | S_PRGWARN))
+		    warn_about_changes(ptr1->m_flags & (S_LEVWARN | S_PRGWARN));
+		  else
+		    if (ptr1->var.def->current)
+		    {
+		      if (allow_changes())
+			ptr1->var.def->current->i = ptr1->var.def->location->i;
+		      else
+			if (ptr1->var.def->current->i != ptr1->var.def->location->i)
+			  warn_about_changes(S_LEVWARN);
+		    }
+
+		  if (ptr1->action)
+		    ptr1->action();
+		  M_SelectDone(ptr1);
+		}
 	      return true;
 	    }
 

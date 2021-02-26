@@ -36,6 +36,7 @@
 #include "dstrings.h"
 #include "m_menu.h"
 #include "d_deh.h"  // Ty 03/22/98 - externalizations
+#include "m_misc2.h" // [FG] M_StringDuplicate()
 
 // Stage of animation:
 //  0 = text, 1 = art screen, 2 = character cast
@@ -51,6 +52,7 @@ int finalecount;
 
 char*   finaletext;
 char*   finaleflat;
+static char* finaletext_rw = NULL;
 
 void    F_StartCast (void);
 void    F_CastTicker (void);
@@ -169,6 +171,14 @@ void F_StartFinale (void)
   
   finalestage = 0;
   finalecount = 0;
+
+  // [FG] do the "char* vs. const char*" dance
+  if (finaletext_rw)
+  {
+    (free)(finaletext_rw);
+    finaletext_rw = NULL;
+  }
+  finaletext_rw = M_StringDuplicate(finaletext);
 }
 
 
@@ -263,6 +273,25 @@ void F_Ticker(void)
 #include "hu_stuff.h"
 extern  patch_t *hu_font[HU_FONTSIZE];
 
+// [FG] add line breaks for lines exceeding screenwidth
+static inline boolean F_AddLineBreak (char *c)
+{
+    while (c-- > finaletext_rw)
+    {
+	if (*c == '\n')
+	{
+	    return false;
+	}
+	else
+	if (*c == ' ')
+	{
+	    *c = '\n';
+	    return true;
+	}
+    }
+
+    return false;
+}
 
 void F_TextWrite (void)
 {
@@ -281,7 +310,7 @@ void F_TextWrite (void)
   // draw some of the text onto the screen
   cx = 10;
   cy = 10;
-  ch = finaletext;
+  ch = finaletext_rw;
       
   count = (int)((finalecount - 10)/Get_TextSpeed());                 // phares
   if (count < 0)
@@ -308,6 +337,15 @@ void F_TextWrite (void)
               
     w = SHORT (hu_font[c]->width);
     if (cx+w > SCREENWIDTH)
+    {
+      // [FG] add line breaks for lines exceeding screenwidth
+      if (F_AddLineBreak(ch))
+        continue;
+      else
+      break;
+    }
+    // [cispy] prevent text from being drawn off-screen vertically
+    if (cy + SHORT(hu_font[c]->height) > SCREENHEIGHT)
       break;
     V_DrawPatch(cx, cy, 0, hu_font[c]);
     cx+=w;
@@ -569,7 +607,8 @@ void F_CastDrawer (void)
   patch_t*            patch;
     
   // erase the entire screen to a background
-  V_DrawPatch (0,0,0, W_CacheLumpName (bgcastcall, PU_CACHE)); // Ty 03/30/98 bg texture extern
+  //V_DrawPatch (0,0,0, W_CacheLumpName (bgcastcall, PU_CACHE)); // Ty 03/30/98 bg texture extern
+  V_DrawPatchFullScreen(0, W_CacheLumpName (bgcastcall, PU_CACHE));
 
   F_CastPrint (castorder[castnum].name);
     
@@ -636,6 +675,7 @@ void F_BunnyScroll (void)
   char        name[10];
   int         stage;
   static int  laststage;
+  int         p2offset, p1offset, pillar_width;
               
   p1 = W_CacheLumpName ("PFUB2", PU_LEVEL);
   p2 = W_CacheLumpName ("PFUB1", PU_LEVEL);
@@ -647,21 +687,51 @@ void F_BunnyScroll (void)
       scrolled = 320;
   if (scrolled < 0)
       scrolled = 0;
-              
-  for ( x=0 ; x<SCREENWIDTH ; x++)
+
+  pillar_width = (SCREENWIDTH - p1->width) / 2;
+
+  if (pillar_width > 0)
   {
-    if (x+scrolled < 320)
-      F_DrawPatchCol (x, p1, x+scrolled);
+    // [crispy] fill pillarboxes in widescreen mode
+    memset(screens[0], 0, (SCREENWIDTH<<hires) * (SCREENHEIGHT<<hires));
+  }
+  else
+  {
+    pillar_width = 0;
+  }
+
+  // Calculate the portion of PFUB2 that would be offscreen at original res.
+  p1offset = (ORIGWIDTH - p1->width) / 2;
+
+  if (p2->width == ORIGWIDTH)
+  {
+    // Unity or original PFUBs.
+    // PFUB1 only contains the pixels that scroll off.
+    p2offset = ORIGWIDTH - p1offset;
+  }
+  else
+  {
+    // Widescreen mod PFUBs.
+    // Right side of PFUB2 and left side of PFUB1 are identical.
+    p2offset = ORIGWIDTH + p1offset;
+  }
+
+  for (x = pillar_width; x < SCREENWIDTH - pillar_width; x++)
+  {
+    int x2 = x - WIDESCREENDELTA + scrolled;
+
+    if (x2 < p2offset)
+      F_DrawPatchCol (x, p1, x2 - p1offset);
     else
-      F_DrawPatchCol (x, p2, x+scrolled - 320);           
+      F_DrawPatchCol (x, p2, x2 - p2offset);           
   }
       
   if (finalecount < 1130)
     return;
   if (finalecount < 1180)
   {
-    V_DrawPatch ((SCREENWIDTH-13*8)/2,
-                 (SCREENHEIGHT-8*8)/2,0, 
+    V_DrawPatch ((ORIGWIDTH-13*8)/2,
+                 (ORIGHEIGHT-8*8)/2,0, 
                  W_CacheLumpName ("END0",PU_CACHE));
     laststage = 0;
     return;
@@ -677,8 +747,8 @@ void F_BunnyScroll (void)
   }
       
   sprintf (name,"END%i",stage);
-  V_DrawPatch ((SCREENWIDTH-13*8)/2, 
-               (SCREENHEIGHT-8*8)/2,0, 
+  V_DrawPatch ((ORIGWIDTH-13*8)/2, 
+               (ORIGHEIGHT-8*8)/2,0, 
                W_CacheLumpName (name,PU_CACHE));
 }
 

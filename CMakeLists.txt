@@ -7,10 +7,21 @@ set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # 3.12 is needed for modern FindPython.
 cmake_minimum_required(VERSION 3.12)
 project("Woof"
-    VERSION 1.2.2
+    VERSION 3.1.0
     DESCRIPTION "Woof! is a continuation of Lee Killough's Doom source port MBF targeted at modern systems."
     HOMEPAGE_URL "https://github.com/fabiangreffrath/woof"
     LANGUAGES C)
+
+# Set a default build type if none was specified
+set(default_build_type "RelWithDebInfo")
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(STATUS "Setting build type to '${default_build_type}' as none was specified.")
+  set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE
+      STRING "Choose the type of build." FORCE)
+  # Set the possible values of build type for cmake-gui
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+    "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
 
 # Prevent in-tree builds.
 if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
@@ -19,11 +30,11 @@ endif()
 
 # Hardcoded defines added to configure and resource files.
 set(PROJECT_COMPANY "Fabian Greffrath and contributors")
-set(PROJECT_COPYRIGHT "Copyright (C) 1993-2020")
+set(PROJECT_COPYRIGHT "Copyright (C) 1993-2021")
 set(PROJECT_LICENSE "GNU General Public License, version 2")
 set(PROJECT_STRING "${PROJECT_NAME} ${PROJECT_VERSION}")
 set(PROJECT_TARNAME "woof")
-set(PROJECT_VERSION_RC "1,2,2,0")
+set(PROJECT_VERSION_RC "3,1,0,0")
 
 # Toggle-able defines added at compile-time.
 option("${PROJECT_NAME}_INSTRUMENTED" "Enable memory allocation statistics" OFF)
@@ -74,6 +85,12 @@ if(NOT ZLIB_ROOT)
             set(CMAKE_ABSOLUTE_TOOLCHAIN_FILE "")
         endif()
 
+        if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+            set(ZLIB_SHARED_LINKER_FLAGS "-static-libgcc")
+        else()
+            set(ZLIB_SHARED_LINKER_FLAGS "")
+        endif()
+
         # Compile zlib ourselves.  This is run at build-time, not compile-time.
         ExternalProject_Add(
             zlib-project
@@ -89,6 +106,7 @@ if(NOT ZLIB_ROOT)
                 "-DCMAKE_SHARED_LIBRARY_PREFIX_C="
                 "-DBUILD_SHARED_LIBS=True"
                 "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_ABSOLUTE_TOOLCHAIN_FILE}"
+                "-DCMAKE_SHARED_LINKER_FLAGS=${ZLIB_SHARED_LINKER_FLAGS}"
             BUILD_COMMAND "${CMAKE_COMMAND}" --build . --target zlib --config Release
             BUILD_BYPRODUCTS ${ZLIB_LIBRARY_RELEASE} ${ZLIB_DLL}
             INSTALL_COMMAND
@@ -117,23 +135,23 @@ if(NOT SDL2_DIR)
         message(STATUS "Downloading SDL2 Development Library...")
         if(MSVC)
             file(DOWNLOAD
-                "https://www.libsdl.org/release/SDL2-devel-2.0.12-VC.zip"
+                "https://www.libsdl.org/release/SDL2-devel-2.0.14-VC.zip"
                 "${CMAKE_CURRENT_BINARY_DIR}/SDL2-VC.zip"
-                EXPECTED_HASH SHA256=00c55a597cebdb9a4eb2723f2ad2387a4d7fd605e222c69b46099b15d5d8b32d)
+                EXPECTED_HASH SHA256=232071cf7d40546cde9daeddd0ec30e8a13254c3431be1f60e1cdab35a968824)
             execute_process(COMMAND "${CMAKE_COMMAND}" -E tar xf
                 "${CMAKE_CURRENT_BINARY_DIR}/SDL2-VC.zip")
         else()
             file(DOWNLOAD
-                "https://www.libsdl.org/release/SDL2-devel-2.0.12-mingw.tar.gz"
+                "https://www.libsdl.org/release/SDL2-devel-2.0.14-mingw.tar.gz"
                 "${CMAKE_CURRENT_BINARY_DIR}/SDL2-mingw.tar.gz"
-                EXPECTED_HASH SHA256=e614a60f797e35ef9f3f96aef3dc6a1d786de3cc7ca6216f97e435c0b6aafc46)
+                EXPECTED_HASH SHA256=405eaff3eb18f2e08fe669ef9e63bc9a8710b7d343756f238619761e9b60407d)
             execute_process(COMMAND "${CMAKE_COMMAND}" -E tar xf
                 "${CMAKE_CURRENT_BINARY_DIR}/SDL2-mingw.tar.gz")
         endif()
-        set(SDL2_DIR "${CMAKE_CURRENT_BINARY_DIR}/SDL2-2.0.12")
+        set(SDL2_DIR "${CMAKE_CURRENT_BINARY_DIR}/SDL2-2.0.14")
     endif()
 endif()
-find_package(SDL2)
+find_package(SDL2 2.0.7)
 
 # SDL2_image.  On Windows, we use the official development library.
 if(NOT SDL2_IMAGE_DIR)
@@ -181,7 +199,7 @@ if(NOT SDL2_MIXER_DIR)
         set(SDL2_MIXER_DIR "${CMAKE_CURRENT_BINARY_DIR}/SDL2_mixer-2.0.4")
     endif()
 endif()
-find_package(SDL2_mixer)
+find_package(SDL2_mixer 2.0.2)
 
 # SDL2_net.  On Windows, we use the official development library.
 if(NOT SDL2_NET_DIR)
@@ -249,3 +267,4 @@ add_subdirectory(docs)
 add_subdirectory(examples)
 add_subdirectory(Source)
 add_subdirectory(toolsrc)
+add_subdirectory(midiproc)

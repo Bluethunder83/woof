@@ -61,9 +61,13 @@ int screenshot_pcx; //jff 3/30/98 // option to output screenshot as pcx or bmp
 extern int mousebfire;
 extern int mousebstrafe;
 extern int mousebforward;
+// [FG] mouse button for "use"
+extern int mousebuse;
 // [FG] prev/next weapon keys and buttons
 extern int mousebprevweapon;
 extern int mousebnextweapon;
+// [FG] double click acts as "use"
+extern int dclick_use;
 extern int joybfire;
 extern int joybstrafe;
 // [FG] strafe left/right joystick buttons
@@ -238,6 +242,14 @@ default_t defaults[] = {
     (config_t *) &default_player_bobbing, (config_t *) &player_bobbing,
     {1}, {0,1}, number, ss_weap, wad_no,
     "1 to enable player bobbing (view moving up/down slightly)"
+  },
+
+  // [FG] centered or bobbing weapon sprite
+  {
+    "center_weapon",
+    (config_t *) &center_weapon, NULL,
+    {0}, {0,2}, number, ss_weap, wad_no,
+    "1 to center the weapon sprite during attack, 2 to keep it bobbing"
   },
 
   { // killough 3/1/98
@@ -665,6 +677,21 @@ default_t defaults[] = {
     "key to clear a key binding"
   },
 
+  // [FG] reload current level / go to next level
+  {
+    "key_menu_reloadlevel",
+    (config_t *) &key_menu_reloadlevel, NULL,
+    {0}, {0,255}, number, ss_keys, wad_no,
+    "key to restart current level"
+  },
+
+  {
+    "key_menu_nextlevel",
+    (config_t *) &key_menu_nextlevel, NULL,
+    {0}, {0,255}, number, ss_keys, wad_no,
+    "key to go to next level"
+  },
+
   {
     "key_strafeleft",
     (config_t *) &key_strafeleft, NULL,
@@ -1082,9 +1109,17 @@ default_t defaults[] = {
   {
     "mouseb_forward",
     (config_t *) &mousebforward, NULL,
-    {2}, {-1,MAX_MB-1}, number, ss_keys, wad_no,
+    {-1}, {-1,MAX_MB-1}, number, ss_keys, wad_no,
     "mouse button number to use for forward motion (-1 = disable)"
   }, //jff 3/8/98 end of lower range change for -1 allowed in mouse binding
+
+  // [FG] mouse button for "use"
+  {
+    "mouseb_use",
+    (config_t *) &mousebuse, NULL,
+    {2}, {-1,MAX_MB-1}, number, ss_keys, wad_no,
+    "mouse button to open a door, use a switch (-1 = disable)"
+  },
 
   // [FG] prev/next weapon keys and buttons
   {
@@ -1099,6 +1134,14 @@ default_t defaults[] = {
     (config_t *) &mousebnextweapon, NULL,
     {3}, {-1,MAX_MB-1}, number, ss_keys, wad_no,
     "mouse button number to cycle to the mext weapon (-1 = disable)"
+  },
+
+  // [FG] double click acts as "use"
+  {
+    "dclick_use",
+    (config_t *) &dclick_use, NULL,
+    {0}, {0,1}, number, ss_gen, wad_no,
+    "double click acts as \"use\""
   },
 
   {
@@ -1452,6 +1495,30 @@ default_t defaults[] = {
     "1 to not show secret sectors till after entered"
   },
 
+  // [FG] player coords widget
+  {
+    "map_player_coords",
+    (config_t *) &map_player_coords, NULL,
+    {1}, {0,1}, number, ss_auto, wad_yes,
+    "1 to show player coords widget"
+  },
+
+  // [FG] level stats widget
+  {
+    "map_level_stats",
+    (config_t *) &map_level_stats, NULL,
+    {0}, {0,1}, number, ss_auto, wad_yes,
+    "1 to show level stats (kill, items and secrets) widget"
+  },
+
+  // [FG] level time widget
+  {
+    "map_level_time",
+    (config_t *) &map_level_time, NULL,
+    {0}, {0,1}, number, ss_auto, wad_yes,
+    "1 to show level time widget"
+  },
+
   //jff 1/7/98 end additions for automap
 
   //jff 2/16/98 defaults for color ranges in hud and status
@@ -1768,12 +1835,36 @@ default_t defaults[] = {
     "1 to precache all sound effects"
   },
 
+  // [FG] play sounds in full length
+  {
+    "full_sounds",
+    (config_t *) &full_sounds, NULL,
+    {0}, {0, 1}, number, ss_none, wad_no,
+    "1 to play sounds in full length"
+  },
+
   // [FG] uncapped rendering frame rate
   {
     "uncapped",
     (config_t *) &uncapped, NULL,
     {0}, {0, 1}, number, ss_none, wad_no,
     "1 to enable uncapped rendering frame rate"
+  },
+
+  // [FG] force integer scales
+  {
+    "integer_scaling",
+    (config_t *) &integer_scaling, NULL,
+    {0}, {0, 1}, number, ss_none, wad_no,
+    "1 to force integer scales"
+  },
+
+  // widescreen mode
+  {
+    "widescreen",
+    (config_t *) &widescreen, NULL,
+    {0}, {0, 1}, number, ss_none, wad_no,
+    "1 to enable widescreen mode"
   },
 
   {NULL}         // last entry

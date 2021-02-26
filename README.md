@@ -34,6 +34,7 @@ The following code changes have been introduced in Woof! relative to MBF or WinM
  * The code has been made 64-bit compatible.
  * The code has been ported to SDL-2, the game scene is now rendered to screen using hardware acceleration (if available).
  * The build system has been ported to CMake with support for building on Linux and Windows, using either MSVC or MinGW and the latter either in a cross-compiling or a native MSYS2 environment (@AlexMax).
+ * Support for rendering with uncapped frame rate and frame interpolation has been added (since Woof! 2.0.0).
  * Fullscreen mode can be toggled in the General menu section or by pressing <kbd>Alt</kbd>+<kbd>Enter</kbd>, and it is now saved in the config file.
  * The complete SDL input and event handling system has been overhauled based on code from Chocolate Doom 3.0 (mouse acceleration is disabled since Woof! 1.1.0).
  * The search path for IWADs has been adapted to modern requirements, taking the install locations for common download packages into account.
@@ -52,6 +53,12 @@ The following code changes have been introduced in Woof! relative to MBF or WinM
  * Sectors with the same visplane for ceiling and sky are now rendered correctly (e.g. eviternity.wad MAP30).
  * The automap now updates while playing (since Woof! 1.2.0).
  * A "demowarp" feature has been added allowing to fast-forward to the desired map in a demo (since Woof! 1.2.0).
+ * Level stats and level time widgets have been added to the automap (since Woof! 2.2.0).
+ * The weapon sprites can now be centered during attacks (since Woof! 2.2.0).
+ * The player coordinates widget on the Automap is now optional (since Woof! 3.0.0).
+ * Sounds may now be played in their full length (since Woof! 3.0.0). However, this only applies to sounds originating from (removed) map objects, not to those that emerge "in the player's head".
+ * All textures are now always composed, whether they are multi-patched or not. Furthermore, two separate composites are created, one for opaque and one for translucent mid-textures on 2S walls. Additionally, textures may now be arbitrarily tall (since Woof! 3.0.0).
+ * A new wrapping column getter function has been introduced to allow for non-power-of-two wide mid-textures on 2S walls (since Woof! 3.0.0).
 
 ## Input
 
@@ -60,6 +67,9 @@ The following code changes have been introduced in Woof! relative to MBF or WinM
  * Key and button bindings may be cleared in the respective menu by using the <kbd>DEL</kbd> key.
  * Movement keys are bound to the WASD scheme by default.
  * Menu control by mouse has been disabled.
+ * The "Run" key inverts "Always Run" behaviour (since Woof! 2.1.0).
+ * Key bindings have been added to restart a level or go to the next level (since Woof! 2.1.0).
+ * A mouse button binding for the "Use" action has been added. Double click acting as "Use" has been made optional (since Woof! 2.3.0).
 
 ## Bug fixes
 
@@ -70,13 +80,15 @@ The following code changes have been introduced in Woof! relative to MBF or WinM
  * A crash when the attack sound for the Lost Soul is missing has been fixed (e.g. ludicrm.wad MAP05).
  * A bug in the translucency table caching has been fixed which would lead to garbled translucency effects for WAD files with custom PLAYPAL lumps.
  * Playback compatility with Vanilla Doom and Boom 2.02 demos has been vastly improved.
+ * A crash when a Dehacked patch attempts to assign a non-existent code pointer has been fixed (since Woof! 2.2.0).
+ * The "Ouch Face" and the "Picked up a Medikit that you really need" message are now shown as intended (since Woof! 2.3.0).
 
 ## Support for more WAD files
 
  * The IWAD files shipped with the "Doom 3: BFG Edition" and the ones published by the Freedoom project are now supported.
  * The level building code has been upgraded to use unsigned data types internally, which allows for loading maps that have been built in "extended nodes" format. 
  * Furthermore, maps using nodes in DeePBSP and (compressed or uncompressed) ZDBSP formats can now be loaded.
- * The renderer has been upgraded to use 32-bit integer variables internally, which fixes crashes in levels with extreme heights or height differences (e.g. ludicrm.wad MAP03).
+ * The renderer has been upgraded to use 32-bit integer types internally (64-bit integer types in parts since Woof! 3.0.0), which fixes crashes in levels with extreme heights or height differences (e.g. ludicrm.wad MAP03 or Eviternity.wad MAP27).
  * A crash when loading maps with too short REJECT matrices has been fixed.
  * A crash when loading maps with too short BLOCKMAP lumps has been fixed (since Woof! 1.2.0).
  * The port is now more forgiving when composing textures with missing patches (which will be substituted by a dummy patch) or empty columns (which will be treated as transparent areas).
@@ -87,6 +99,7 @@ The following code changes have been introduced in Woof! relative to MBF or WinM
  * Maps without level name graphics do not crash during the intermission screen anymore.
  * Extra states, sprites and mobjtypes have been added for use in Dehacked patches (since Woof! 1.2.0).
  * Support for tall textures and sprites in DeePsea format has been added (since Woof! 1.2.2).
+ * A crash is fixed when loading a PWAD which contains empty DEHACKED lumps (e.g. ElevenZero.wad, since Woof! 3.0.0).
 
 ## Known issues
 
@@ -155,6 +168,28 @@ Much like a native Windows build, you do not need to download any dependencies.
    Bug-fix release, fixing drag-n-drop for IWAD files and endianess for extended nodes.
  * 1.2.2 (Jun 09, 2020)  
    Minor release, adding support for tall patches and sprites.
+ * 2.0.0 (Jul 03, 2020)  
+   Major release, introducing rendering with uncapped frame rate and frame interpolation.
+ * 2.0.1 (Jul 10, 2020)  
+   Bug-fix release, fixing rendering of linedef type 242 fake floors and ceilings.
+ * 2.0.2 (Jul 20, 2020)  
+   Bug-fix release, more fixes to linedef type 242 fake floors and ceilings rendering.
+ * 2.1.0 (Aug 17, 2020)  
+   Minor release, adding support for inverting "Always Run" with the "Run" key and new key bindings to restart a level or go to the next level.
+ * 2.1.1 (Sep 03, 2020)  
+   Bug-fix release, fixing linedef type 242 rendering with moving control sectors and SDL2_Mixer opening a different number of audio channels than requested.
+ * 2.2.0 (Sep 11, 2020)  
+   Feature release, adding level stats and level time widgets to the automap and optional weapon sprite centering during attacks.
+ * 2.3.0 (Sep 21, 2020)  
+   Feature release, adding a mouse button binding for the "Use" action.
+ * 2.3.1 (Sep 30, 2020)  
+   Bug-fix release, fixing the vertical position of the level stats widgets and finale text lines exceeding screen width.
+ * 2.3.2 (Oct 19, 2020)  
+   Bug-fix release, fixing a crash when the second finale text screen is shown.
+ * 3.0.0 (Nov 30, 2020)  
+   Major release, attempting to fix all known texture rendering bugs. Also adding support for sounds played at full length and optional player coordinates on the Automap.
+ * 3.1.0 (Jan 08, 2021)  
+   Feature release, adding a choice of centered or bobbing weapon sprite during attack, a default save slot name when the user saves to an empty slot and total time for all completed levels.
 
 # Contact
 
@@ -178,15 +213,15 @@ Copyright: © 1993-1996 Id Software, Inc.;
  © 1999 by id Software, Chi Hoang, Lee Killough, Jim Flynn, Rand Phares, Ty Halderman;  
  © 2004 James Haley;  
  © 2005-2014 Simon Howard;  
- © 2020 Fabian Greffrath;  
+ © 2020-2021 Fabian Greffrath;  
  © 2020 Alex Mayfield.  
 License: [GPL-2.0+](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
 
-Files: `Source/beta.c`  
+Files: `Source/beta.h`  
 Copyright: © 2001-2019 Contributors to the Freedoom project.  
 License: [BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause)
 
-Files: `Source/dogs.c`  
+Files: `Source/dogs.h`  
 Copyright: © 2017 Nash Muhandes;  
  © apolloaiello;  
  © TobiasKosmos.  

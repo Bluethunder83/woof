@@ -40,7 +40,7 @@
 #define HU_BROADCAST    5
 
 //#define HU_MSGREFRESH   KEYD_ENTER                                // phares
-#define HU_MSGX         0
+#define HU_MSGX         (0 - WIDESCREENDELTA)
 #define HU_MSGY         0
 #define HU_MSGWIDTH     64      /* in characters */
 #define HU_MSGHEIGHT    1       /* in lines */
@@ -84,6 +84,7 @@ extern int hud_displayed;   // hud is displayed
 //jff 2/18/98 hud/status control
 extern int hud_active;      // hud mode 0=off, 1=small, 2=full
 extern int hud_nosecrets;   // status does not list secrets/items/kills
+extern int map_player_coords, map_level_stats, map_level_time; // [FG] level stats and level time widgets
 
 #endif
 

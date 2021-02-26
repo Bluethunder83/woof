@@ -94,6 +94,9 @@ static void P_SetPsprite(player_t *player, int position, statenum_t stnum)
           // coordinate set
           psp->sx = state->misc1 << FRACBITS;
           psp->sy = state->misc2 << FRACBITS;
+          // [FG] centered weapon sprite
+          psp->sx2 = psp->sx;
+          psp->sy2 = psp->sy;
         }
 
       // Call action routine.
@@ -642,7 +645,7 @@ void A_FireOldBFG(player_t *player, pspdef_t *psp)
       th->momx = finecosine[an1>>ANGLETOFINESHIFT] * 25;
       th->momy = finesine[an1>>ANGLETOFINESHIFT] * 25;
       th->momz = finetangent[an2>>ANGLETOFINESHIFT] * 25;
-      // [crispy] suppress interpolation of player missiles for the first tic
+      // [FG] suppress interpolation of player missiles for the first tic
       th->interp = -1;
       P_CheckMissileSpawn(th);
     }
@@ -900,6 +903,35 @@ void P_MovePsprites(player_t *player)
 
   player->psprites[ps_flash].sx = player->psprites[ps_weapon].sx;
   player->psprites[ps_flash].sy = player->psprites[ps_weapon].sy;
+
+  // [FG] centered weapon sprite
+  psp = &player->psprites[ps_weapon];
+  psp->sx2 = psp->sx;
+  psp->sy2 = psp->sy;
+  if (psp->state)
+  {
+    if (psp->state->misc1 ||
+        psp->state->action == A_Lower ||
+        psp->state->action == A_Raise)
+    {
+      // [FG] don't center during lowering and raising states
+    }
+    else if (player->attackdown && center_weapon == 1)
+    {
+      psp->sx2 = FRACUNIT;
+      psp->sy2 = WEAPONTOP;
+    }
+    else if (player->attackdown && center_weapon == 2)
+    {
+      int angle = (128*leveltime) & FINEMASK;
+      psp->sx2 = FRACUNIT + FixedMul(player->bob, finecosine[angle]);
+      angle &= FINEANGLES/2-1;
+      psp->sy2 = WEAPONTOP + FixedMul(player->bob, finesine[angle]);
+    }
+  }
+
+  player->psprites[ps_flash].sx2 = player->psprites[ps_weapon].sx2;
+  player->psprites[ps_flash].sy2 = player->psprites[ps_weapon].sy2;
 }
 
 //----------------------------------------------------------------------------

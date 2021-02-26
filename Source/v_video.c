@@ -228,13 +228,19 @@ void V_CopyRect(int srcx, int srcy, int srcscrn, int width,
       ||srcx+width >SCREENWIDTH
       || srcy<0
       || srcy+height>SCREENHEIGHT
-      ||destx<0||destx+width >SCREENWIDTH
+      ||destx<0||destx/*+width*/>SCREENWIDTH
       || desty<0
-      || desty+height>SCREENHEIGHT
+      || desty/*+height*/>SCREENHEIGHT
       || (unsigned)srcscrn>4
       || (unsigned)destscrn>4)
     I_Error ("Bad V_CopyRect");
 #endif
+
+  // [FG] prevent framebuffer overflows
+  if (destx + width > SCREENWIDTH)
+    width = SCREENWIDTH - destx;
+  if (desty + height > SCREENHEIGHT)
+    height = SCREENHEIGHT - desty;
 
   V_MarkRect (destx, desty, width, height);
 
@@ -296,7 +302,9 @@ void V_DrawPatchGeneral(int x, int y, int scrn, patch_t *patch,
   y -= SHORT(patch->topoffset);
   x -= SHORT(patch->leftoffset);
 
-#ifdef RANGECHECK
+  x += WIDESCREENDELTA; // [crispy] horizontal widescreen offset
+
+#ifdef RANGECHECK_NOTHANKS
   if (x<0
       ||x+SHORT(patch->width) >SCREENWIDTH
       || y<0
@@ -312,10 +320,20 @@ void V_DrawPatchGeneral(int x, int y, int scrn, patch_t *patch,
     {
       byte *desttop = screens[scrn]+y*SCREENWIDTH*4+x*2;
 
-      for ( ; col != colstop ; col += colstep, desttop+=2)
+      for ( ; col != colstop ; col += colstep, desttop+=2, x++)
 	{
 	  const column_t *column = 
 	    (const column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+
+	  // [FG] prevent framebuffer overflows
+	  {
+	    // [FG] too far left
+	    if (x < 0)
+	      continue;
+	    // [FG] too far right, too wide
+	    if (x >= SCREENWIDTH)
+	      break;
+	  }
 
 	  // step through the posts in a column
 	  while (column->topdelta != 0xff)
@@ -325,6 +343,17 @@ void V_DrawPatchGeneral(int x, int y, int scrn, patch_t *patch,
 	      register const byte *source = (byte *) column + 3;
 	      register byte *dest = desttop + column->topdelta*SCREENWIDTH*4;
 	      register int count = column->length;
+
+	      // [FG] prevent framebuffer overflows
+	      {
+		int topy = y + column->topdelta;
+		// [FG] too high
+		while (topy < 0 && count)
+		  count--, source++, dest += SCREENWIDTH*4, topy++;
+		// [FG] too low, too tall
+		while (topy + count > SCREENHEIGHT && count)
+		  count--;
+	      }
 
 	      if ((count-=4)>=0)
 		do
@@ -363,7 +392,9 @@ void V_DrawPatchGeneral(int x, int y, int scrn, patch_t *patch,
 		    dest += SCREENWIDTH*4;
 		  }
 		while (--count);
-	      column = (column_t *)(source+1); //killough 2/21/98 even faster
+//	      column = (column_t *)(source+1); //killough 2/21/98 even faster
+	      // [FG] back to Vanilla code, we may not run through the entire column
+	      column = (column_t *)((byte *)column + column->length + 4);
 	    }
 	}
     }
@@ -371,10 +402,20 @@ void V_DrawPatchGeneral(int x, int y, int scrn, patch_t *patch,
     {
       byte *desttop = screens[scrn]+y*SCREENWIDTH+x;
 
-      for ( ; col != colstop ; col += colstep, desttop++)
+      for ( ; col != colstop ; col += colstep, desttop++, x++)
 	{
 	  const column_t *column = 
 	    (const column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+
+	  // [FG] prevent framebuffer overflows
+	  {
+	    // [FG] too far left
+	    if (x < 0)
+	      continue;
+	    // [FG] too far right, too wide
+	    if (x >= SCREENWIDTH)
+	      break;
+	  }
 
 	  // step through the posts in a column
 	  while (column->topdelta != 0xff)
@@ -384,6 +425,17 @@ void V_DrawPatchGeneral(int x, int y, int scrn, patch_t *patch,
 	      register const byte *source = (byte *) column + 3;
 	      register byte *dest = desttop + column->topdelta*SCREENWIDTH;
 	      register int count = column->length;
+
+	      // [FG] prevent framebuffer overflows
+	      {
+		int topy = y + column->topdelta;
+		// [FG] too high
+		while (topy < 0 && count)
+		  count--, source++, dest += SCREENWIDTH, topy++;
+		// [FG] too low, too tall
+		while (topy + count > SCREENHEIGHT && count)
+		  count--;
+	      }
 
 	      if ((count-=4)>=0)
 		do
@@ -409,7 +461,9 @@ void V_DrawPatchGeneral(int x, int y, int scrn, patch_t *patch,
 		    dest += SCREENWIDTH;
 		  }
 		while (--count);
-	      column = (column_t *)(source+1); //killough 2/21/98 even faster
+//	      column = (column_t *)(source+1); //killough 2/21/98 even faster
+	      // [FG] back to Vanilla code, we may not run through the entire column
+	      column = (column_t *)((byte *)column + column->length + 4);
 	    }
 	}
     }
@@ -442,6 +496,8 @@ void V_DrawPatchTranslated(int x, int y, int scrn, patch_t *patch,
 
   y -= SHORT(patch->topoffset);
   x -= SHORT(patch->leftoffset);
+
+  x += WIDESCREENDELTA; // [crispy] horizontal widescreen offset
 
 #ifdef RANGECHECK
   if (x<0
@@ -576,6 +632,22 @@ void V_DrawPatchTranslated(int x, int y, int scrn, patch_t *patch,
 	}
 
     }
+}
+
+void V_DrawPatchFullScreen(int scrn, patch_t *patch)
+{
+    int x = (SCREENWIDTH - patch->width) / 2 - WIDESCREENDELTA;
+
+    patch->leftoffset = 0;
+    patch->topoffset = 0;
+
+    // [crispy] fill pillarboxes in widescreen mode
+    if (SCREENWIDTH != NONWIDEWIDTH)
+    {
+       memset(screens[scrn], 0, (SCREENWIDTH<<hires) * (SCREENHEIGHT<<hires));
+    }
+
+    V_DrawPatch(x, 0, scrn, patch);
 }
 
 //

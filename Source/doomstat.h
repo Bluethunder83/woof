@@ -211,6 +211,7 @@ extern  int levelstarttic;  // gametic at level start
 extern  int basetic;    // killough 9/29/98: levelstarttic, adjusted
 extern  int leveltime;  // tics in game play for par
 extern  int oldleveltime;
+extern  int totalleveltimes; // [FG] total time for all completed levels
 // --------------------------------------
 // DEMO playback/recording related stuff.
 
@@ -341,6 +342,9 @@ extern int help_friends, default_help_friends;
 extern int flashing_hom; // killough 10/98
 
 extern int doom_weapon_toggles;   // killough 10/98
+
+// [FG] centered weapon sprite
+extern int center_weapon;
 
 #endif
 

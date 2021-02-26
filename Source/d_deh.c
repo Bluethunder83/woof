@@ -1436,6 +1436,12 @@ void ProcessDehFile(char *filename, char *outfilename, int lumpnum)
       infile.size = W_LumpLength(lumpnum);
       infile.inp = infile.lump = W_CacheLumpNum(lumpnum, PU_STATIC);
       filename = "(WAD)";
+      // [FG] skip empty DEHACKED lumps
+      if (!infile.inp)
+        {
+          printf("skipping empty DEHACKED (%d) lump\n",lumpnum);
+          return;
+        }
     }
 
   printf("Loading DEH file %s\n",filename);
@@ -1600,7 +1606,7 @@ void deh_procBexCodePointers(DEHFILE *fpin, FILE* fpout, char *line)
                                  deh_bexptrs[i].cptr,i,indexnum);
               found = TRUE;
             }
-        } while (!found && (deh_bexptrs[i].lookup != NULL));
+        } while (!found && (deh_bexptrs[i].cptr != NULL)); // [FG] lookup is never NULL!
 
       if (!found)
         if (fpout) fprintf(fpout,
